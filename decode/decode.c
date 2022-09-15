@@ -109,16 +109,72 @@
 //   }
 // }
 
+// 对 qw[2 * R_QW] 循环右移一位, 仅 [185]-[369] 有效
+_INLINE_ void
+rotate_right_1(OUT single_h_t *out, IN const single_h_t *in)
+{
+  for(size_t i = 369; i > R_QW - 1; i--)
+  {
+    out->qw[i] = (in->qw[i] << 1) | (in->qw[i - 1] >> 63);
+  }
+}
+
 // 对 bytelen 长字节流, a 取反并和 b 与 (res = ~a & b)
 _INLINE_ ret_t
-negate(OUT uint8_t      *res,
-       IN const uint8_t *a,
-       IN const uint8_t *b,
-       IN const uint64_t bytelen)
+negate_and(OUT uint8_t      *res,
+           IN const uint8_t *a,
+           IN const uint8_t *b,
+           IN const uint64_t bytelen)
 {
   for(uint64_t i = 0; i < bytelen; i++)
   {
     res[i] = ~a[i] & b[i];
+  }
+  return SUCCESS;
+}
+
+// 对 bytelen 长字节流, a 和 b '与' 并存储在 res 行
+_INLINE_ ret_t
+and_index(OUT uint16_t     *res,
+          IN const uint8_t *a,
+          IN const uint8_t *b,
+          IN const uint64_t bytelen)
+{
+  // tmp 用于暂存'与'信息
+  uint8_t tmp[R_SIZE] = {0};
+  // count 用于记录列位置
+  uint8_t count = 0;
+  // 定义低三位 mask_3 = 00000111 用于取值
+  uint8_t mask_3 = 7;
+  // 对前 1472 个字节依次比对
+  for(uint64_t i = 0; i < bytelen - 1; i++)
+  {
+    tmp[i] = a[i] & b[i];
+    // 若存在重合则将重合索引添加到 res 中
+    if(tmp[i] != 0)
+    {
+      // 将 location = 00000001 依次左移 和 tmp[i] 与运算找到重合位置
+      for(uint8_t index, location = 1; location != 0; location << 1)
+      {
+        if(location & tmp[i] != 0)
+        {
+          res[count] = i * 8 + index - 1;
+          count++;
+        }
+        index++;
+      }
+    }
+  }
+  // 对最后 3 位单独比对
+  tmp[bytelen] = a[bytelen] & b[bytelen] & mask_3;
+  for(uint8_t index_2, location_2 = 1; location_2 < 8; location_2 << 1)
+  {
+    if(location_2 & tmp[bytelen] != 0)
+    {
+      res[count] = bytelen * 8 + index_2 - 1;
+      count++;
+    }
+    index_2++;
   }
   return SUCCESS;
 }
@@ -473,11 +529,21 @@ decode(OUT split_e_t       *e,
   dup_c_t    c               = {0};
   dup_c_t    rotated_c       = {0};
   dup_c_t    constant_term   = {0};
+  h_t        h               = {0};
   syndrome_t s;
 
   // 获取 ct 的值
   ct_pad.val[0] = ct->val[0];
   ct_pad.val[1] = ct->val[1];
+
+  // 从 sk 中获取 h 第一行的 bin
+  // 复制 1473 个字节到 qw 的前 185 个 64 位整型中
+  memcpy((uint8_t *)&h.val[0].qw[185], sk->bin[0].raw, R_SIZE);
+  memcpy((uint8_t *)&h.val[1].qw[185], sk->bin[1].raw, R_SIZE);
+
+  // 复制 h
+  dup_two(&h.val[0]);
+  dup_two(&h.val[1]);
 
   // Reset (init) the error because it is xored in the find_err funcitons.
   // 初始化 e
@@ -587,8 +653,8 @@ decode(OUT split_e_t       *e,
                      gray_e.val[i].raw, R_SIZE));
 
       // 去除 c 中的未知数位，将 black_or_gray_e 取反后与 c 做与操作
-      GUARD(negate(ct_remove_BG.val[i].raw, black_or_gray_e.val[i].raw,
-                   ct_pad.val[i].raw, R_SIZE));
+      GUARD(negate_and(ct_remove_BG.val[i].raw, black_or_gray_e.val[i].raw,
+                       ct_pad.val[i].raw, R_SIZE));
 
       // 将 ct_remove_BG 的 uint8 存储结构调整位 uint64
       // 调整 1473 个字节到 qw 的前 185 个 64 位整型中，并复制三份
@@ -614,8 +680,10 @@ decode(OUT split_e_t       *e,
            (r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
             r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw)));
 
+    // 将当前 h 与 black_or_gray_e 与运算
+
     // H' 的每一列需要对 H 进行单次循环右移位
-    // 类似 dup() 的方法，我们对 bin 进行一次复制来进行循环右移的操作
+    rotate_right_1(&h.val[0].qw, h.val[0].qw);
 
     // =================================================================
   }
