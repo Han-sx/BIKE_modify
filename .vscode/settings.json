@@ -1,0 +1,8 @@
+{
+    "makefile.extensionOutputFolder": "./.vscode",
+    "files.associations": {
+        "types.h": "c",
+        "decode.h": "c",
+        "aes_ctr_prf.h": "c"
+    }
+}

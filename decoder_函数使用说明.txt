@@ -1,0 +1,45 @@
+BIKE 主函数逻辑在 tests 文件夹下的 fixed_seed_test.c 文件
+
+整个 BIKE 的解封装过程在 fixed_seed_test.c 文件中的 crypto_kem_dec() 函数中有详细注释说明
+crypto_kem_dec() 函数中赋值的密文和密钥来自于 crypto_kem_enc() 和 crypto_kem_keypair()
+
+如果不考虑整个 BIKE 的连贯性，仅修改 crypto_kem_dec() 的赋值即可，其他打印输出忽视
+ct 与 sk 均为 unsigned char, 若为其单独赋值可以对其进行数据类型转换后按照参数意义进行赋值
+所有参数类型均在 common 文件夹下的 types.h 文件中定义
+
+如果仅使用 BIKE 中 BFG-decoder(黑灰译码功能) 只需关注 kem.c 文件中的 381 行代码 decode() 函数
+输入为 校正子 s, 密文 c 和私钥 sk. 按照数据类型 split_e_t, syndrome_t, ct_t, sk_t 修改输入参数即可
+黑灰译码结果已经在 decode() 函数中修改打印, 参数输入正确后运行可以看到 decode 出的结果
+
+在 decode.c 的 389 行中 iter >= 1 时去除了 Step II 和 Step III
+相当于只进行了一轮黑灰迭代后进行了多轮比特位反转(step I)
+此处在论文中没有对 iter 迭代次数的判断依据
+
+print 方式为小端输出，在 utilities.h 中定义
+
+运行方式：
+在根目录下运行 Makefile, 可执行文件 main 被保存在 bin 文件夹中
+
+该包使用 gcc（4.8.0 或更高版本）在 64 位模式下编译和测试
+测试在 Linux（Ubuntu 18.04.3 LTS）操作系统上正常运行
+
+可附加标签(VERBOSE已经默认修改为 4)：
+Additional compilation flags:
+ - USE_NIST_RAND - Using the RDBG of NIST and generate the KATs.
+ - USE_OPENSSL   - Use OpenSSL for AES/SHA and GF2X multiplication.
+                   OpenSSL must be installed on the platform.
+ - OPENSSL_DIR   - Set the path of the OpenSSL include/lib directories.
+ - FIXED_SEED    - Using a fixed seed, for debug purposes.
+ - RDTSC         - Measure time in cycles rather than in mseconds.
+ - VERBOSE       - Add verbose (level:1-4 default:1).
+ - NUM_OF_TESTS  - Set the number of tests to be run.
+ - AVX2          - Compile with AVX2 support (to compile use GCC).
+ - AVX512        - Compile with AVX512 support (to compile use GCC).
+ - LEVEL         - Security level (1/3/5).
+ - ASAN/TSAN - Enable the associated clang sanitizer
+
+To clean:
+    make clean.
+
+在使用修改后的标志进行编译之前需要使用 make clean, 但不影响纯代码修改的编译过程
+如不能正确打印可以在每次编译前进行 make clean
