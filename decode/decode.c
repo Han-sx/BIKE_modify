@@ -160,6 +160,7 @@ dup(IN OUT syndrome_t *s)
 // |  first R_BITS | Second copy |
 // |-----------------------------|
 // 进入的 h 当从 185 位开始存放 (h0--h11779)，前 0-184 应为 0
+// 此处减少一次复制，并为循环右移做准备
 _INLINE_ void
 dup_two(IN OUT single_h_t *h)
 {
