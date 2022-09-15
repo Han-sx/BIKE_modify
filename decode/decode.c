@@ -154,9 +154,9 @@ and_index(OUT uint16_t     *res,
     if(tmp[i] != 0)
     {
       // 将 location = 00000001 依次左移 和 tmp[i] 与运算找到重合位置
-      for(uint8_t index, location = 1; location != 0; location << 1)
+      for(uint8_t index, location = 1; location != 0; location <<= 1)
       {
-        if(location & tmp[i] != 0)
+        if((location & tmp[i]) != 0)
         {
           res[count] = i * 8 + index - 1;
           count++;
@@ -167,9 +167,9 @@ and_index(OUT uint16_t     *res,
   }
   // 对最后 3 位单独比对
   tmp[bytelen] = a[bytelen] & b[bytelen] & mask_3;
-  for(uint8_t index_2, location_2 = 1; location_2 < 8; location_2 << 1)
+  for(uint8_t index_2, location_2 = 1; location_2 < 8; location_2 <<= 1)
   {
-    if(location_2 & tmp[bytelen] != 0)
+    if((location_2 & tmp[bytelen]) != 0)
     {
       res[count] = bytelen * 8 + index_2 - 1;
       count++;
@@ -683,7 +683,7 @@ decode(OUT split_e_t       *e,
     // 将当前 h 与 black_or_gray_e 与运算
 
     // H' 的每一列需要对 H 进行单次循环右移位
-    rotate_right_1(&h.val[0].qw, h.val[0].qw);
+    rotate_right_1(&h.val[0], &h.val[0]);
 
     // =================================================================
   }
