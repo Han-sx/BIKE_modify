@@ -111,7 +111,7 @@
 
 // 对 qw[2 * R_QW] 循环右移一位, 仅 [185]-[369] 有效
 _INLINE_ void
-rotate_right_1(OUT single_h_t *out, IN const single_h_t *in)
+rotate_right_one(OUT single_h_t *out, IN const single_h_t *in)
 {
   for(size_t i = 369; i > R_QW - 1; i--)
   {
@@ -133,7 +133,7 @@ negate_and(OUT uint8_t      *res,
   return SUCCESS;
 }
 
-// 对 bytelen 长字节流, a 和 b '与' 并存储在 res 行
+// 对 bytelen 长字节流, a 和 b '与', 索引存储在 res 行
 _INLINE_ ret_t
 and_index(OUT uint16_t     *res,
           IN const uint8_t *a,
@@ -154,11 +154,11 @@ and_index(OUT uint16_t     *res,
     if(tmp[i] != 0)
     {
       // 将 location = 00000001 依次左移 和 tmp[i] 与运算找到重合位置
-      for(uint8_t index, location = 1; location != 0; location <<= 1)
+      for(uint8_t index = 0, location = 1; location != 0; location <<= 1)
       {
         if((location & tmp[i]) != 0)
         {
-          res[count] = i * 8 + index - 1;
+          res[count] = i * 8 + index;
           count++;
         }
         index++;
@@ -167,11 +167,11 @@ and_index(OUT uint16_t     *res,
   }
   // 对最后 3 位单独比对
   tmp[bytelen] = a[bytelen] & b[bytelen] & mask_3;
-  for(uint8_t index_2, location_2 = 1; location_2 < 8; location_2 <<= 1)
+  for(uint8_t index_2 = 0, location_2 = 1; location_2 < 8; location_2 <<= 1)
   {
     if((location_2 & tmp[bytelen]) != 0)
     {
-      res[count] = bytelen * 8 + index_2 - 1;
+      res[count] = bytelen * 8 + index_2;
       count++;
     }
     index_2++;
@@ -521,16 +521,17 @@ decode(OUT split_e_t       *e,
        IN const sk_t       *sk)
 {
   // 初始化黑灰数组
-  split_e_t  black_e         = {0};
-  split_e_t  gray_e          = {0};
-  split_e_t  black_or_gray_e = {0};
-  ct_t       ct_remove_BG    = {0};
-  ct_t       ct_pad          = {0};
-  dup_c_t    c               = {0};
-  dup_c_t    rotated_c       = {0};
-  dup_c_t    constant_term   = {0};
-  h_t        h               = {0};
-  syndrome_t s;
+  split_e_t   black_e         = {0};
+  split_e_t   gray_e          = {0};
+  split_e_t   black_or_gray_e = {0};
+  ct_t        ct_remove_BG    = {0};
+  ct_t        ct_pad          = {0};
+  dup_c_t     c               = {0};
+  dup_c_t     rotated_c       = {0};
+  dup_c_t     constant_term   = {0};
+  h_t         h               = {0};
+  syndrome_t  s;
+  equations_t equations = {0};
 
   // 获取 ct 的值
   ct_pad.val[0] = ct->val[0];
@@ -672,18 +673,39 @@ decode(OUT split_e_t       *e,
                        (uint8_t *)constant_term.val[i].qw,
                        (uint8_t *)rotated_c.val[i].qw, R_SIZE));
       }
+
+      // 对方程组未知数进行构建，索引存储于 equeations 中
+      for(uint16_t i_eq = 0; i_eq < R_BITS; i_eq++)
+      {
+        // 将当前 h 与 black_or_gray_e 与运算
+        // h 的有效位是 [185]-[369]
+        GUARD(and_index(equations.val[i].eq[i_eq], black_or_gray_e.val[i].raw,
+                        (uint8_t *)&h.val[i].qw[R_QW], R_SIZE));
+        // 对 H 进行 1 bit 循环右移位
+        rotate_right_one(&h.val[i], &h.val[i]);
+      }
     }
 
-    // TODO 开始对方程组未知数进行构建
     // 将 black_or_gray_e 与 H' 的每一列进行'与'操作
     printf("\nblack_or_gray_e 的未知数个数：%lu \n",
            (r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
             r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw)));
 
-    // 将当前 h 与 black_or_gray_e 与运算
-
-    // H' 的每一列需要对 H 进行单次循环右移位
-    rotate_right_1(&h.val[0], &h.val[0]);
+    // // -- test -- 输出 equations 的值
+    // for(uint16_t i = 0; i < 11779; i++)
+    // {
+    //   if(equations.val[0].eq[i][0] == 0){
+    //     continue;
+    //   }
+    //   for(uint8_t j = 0; j < 10; j++)
+    //   {
+    //     if(equations.val[0].eq[i][j] != 0)
+    //     {
+    //       printf("%u  ", equations.val[0].eq[i][j]);
+    //     }
+    //   }
+    //   printf("\n");
+    // }
 
     // =================================================================
   }
