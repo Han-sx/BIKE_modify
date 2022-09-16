@@ -162,6 +162,19 @@ typedef struct h_s
   single_h_t val[N0];
 } h_t;
 
+// 存放方程索引的二维数组
+// 这里用 10 列基本可以包含所有未知数索引
+typedef struct single_equation_s
+{
+  uint16_t eq[R_BITS][10];
+} single_equation_t;
+
+// 封装两个二维数组
+typedef struct equation_s
+{
+  single_equation_t val[N0];
+} equations_t;
+
 typedef struct upc_slice_s
 {
   union {
