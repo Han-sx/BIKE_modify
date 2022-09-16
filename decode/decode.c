@@ -686,7 +686,7 @@ decode(OUT split_e_t       *e,
       }
     }
 
-    // 将 black_or_gray_e 与 H' 的每一列进行'与'操作
+    // 查看需要求解的未知数个数
     printf("\nblack_or_gray_e 的未知数个数：%lu \n",
            (r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
             r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw)));
