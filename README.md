@@ -1,5 +1,6 @@
 BIKE-1 - Additional implementation of "BIKE: Bit Flipping Key Encapsulation". 
 -----------------------------------------------------------------------------
+**【！before you read，the developing branch is the latest branch, please switch branches to view the codes！】**
 
 This package is an "additional optimized" implementation of the Round-2 
 variant of BIKE-1. 
