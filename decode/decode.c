@@ -75,6 +75,9 @@
 #  endif
 #endif
 
+// 定义一个全局变量用于记录 equations 中每一行的非零索引
+uint8_t eq_index[R_BITS] = {0};
+
 // // 用于 将一个 8 位数组转换为十进制 存放于 bin_to_uint8_tmp 中
 // void binary_to_uint8_t(uint8_t a[])
 // {
@@ -138,12 +141,16 @@ _INLINE_ ret_t
 and_index(OUT uint16_t     *res,
           IN const uint8_t *a,
           IN const uint8_t *b,
-          IN const uint64_t bytelen)
+          IN const uint64_t bytelen,
+          IN uint32_t       i_N0,
+          IN uint16_t       i_eq)
 {
   // tmp 用于暂存'与'信息
   uint8_t tmp[R_SIZE] = {0};
-  // count 用于记录列位置
-  uint8_t count = 0;
+
+  // // count 用于记录列位置 (modify -> eq_index[i_eq])
+  // uint8_t count = 0;
+
   // 定义低三位 mask_3 = 00000111 用于取值
   uint8_t mask_3 = 7;
   // 对前 1472 个字节依次比对
@@ -158,8 +165,8 @@ and_index(OUT uint16_t     *res,
       {
         if((location & tmp[i]) != 0)
         {
-          res[count] = i * 8 + index;
-          count++;
+          res[eq_index[i_eq]] = i * 8 + index + i_N0 * R_BITS;
+          eq_index[i_eq]++;
         }
         index++;
       }
@@ -171,8 +178,8 @@ and_index(OUT uint16_t     *res,
   {
     if((location_2 & tmp[bytelen]) != 0)
     {
-      res[count] = bytelen * 8 + index_2;
-      count++;
+      res[eq_index[i_eq]] = bytelen * 8 + index_2 + i_N0 * R_BITS;
+      eq_index[i_eq]++;
     }
     index_2++;
   }
@@ -521,17 +528,18 @@ decode(OUT split_e_t       *e,
        IN const sk_t       *sk)
 {
   // 初始化黑灰数组
-  split_e_t   black_e         = {0};
-  split_e_t   gray_e          = {0};
-  split_e_t   black_or_gray_e = {0};
-  ct_t        ct_remove_BG    = {0};
-  ct_t        ct_pad          = {0};
-  dup_c_t     c               = {0};
-  dup_c_t     rotated_c       = {0};
-  dup_c_t     constant_term   = {0};
-  h_t         h               = {0};
-  syndrome_t  s;
-  equations_t equations = {0};
+  split_e_t  black_e         = {0};
+  split_e_t  gray_e          = {0};
+  split_e_t  black_or_gray_e = {0};
+  ct_t       ct_remove_BG    = {0};
+  ct_t       ct_pad          = {0};
+  dup_c_t    c               = {0};
+  dup_c_t    rotated_c       = {0};
+  dup_c_t    constant_term   = {0};
+  h_t        h               = {0};
+  syndrome_t s;
+  // 定义 11779 行方程组
+  uint16_t equations[R_BITS][10] = {0};
 
   // 获取 ct 的值
   ct_pad.val[0] = ct->val[0];
@@ -674,17 +682,22 @@ decode(OUT split_e_t       *e,
                        (uint8_t *)rotated_c.val[i].qw, R_SIZE));
       }
 
-      // 对方程组未知数进行构建，索引存储于 equeations 中
+      // 对方程组未知数进行构建，两次循环的索引都存储于 equeations 中
       for(uint16_t i_eq = 0; i_eq < R_BITS; i_eq++)
       {
         // 将当前 h 与 black_or_gray_e 与运算
         // h 的有效位是 [185]-[369]
-        GUARD(and_index(equations.val[i].eq[i_eq], black_or_gray_e.val[i].raw,
-                        (uint8_t *)&h.val[i].qw[R_QW], R_SIZE));
+        GUARD(and_index(equations[i_eq], black_or_gray_e.val[i].raw,
+                        (uint8_t *)&h.val[i].qw[R_QW], R_SIZE, i, i_eq));
         // 对 H 进行 1 bit 循环右移位
         rotate_right_one(&h.val[i], &h.val[i]);
       }
     }
+
+    // 将 constant_term.val[0] ^ constant_term.val[1] 放入 constant_term.val[0]
+    GUARD(gf2x_add((uint8_t *)&constant_term.val[0].qw,
+                   (uint8_t *)constant_term.val[0].qw,
+                   (uint8_t *)rotated_c.val[0].qw, R_SIZE));
 
     // 查看需要求解的未知数个数
     printf("\nblack_or_gray_e 的未知数个数：%lu \n",
@@ -694,14 +707,15 @@ decode(OUT split_e_t       *e,
     // // -- test -- 输出 equations 的值
     // for(uint16_t i = 0; i < 11779; i++)
     // {
-    //   if(equations.val[0].eq[i][0] == 0){
+    //   if(equations[i][0] == 0)
+    //   {
     //     continue;
     //   }
     //   for(uint8_t j = 0; j < 10; j++)
     //   {
-    //     if(equations.val[0].eq[i][j] != 0)
+    //     if(equations[i][j] != 0)
     //     {
-    //       printf("%u  ", equations.val[0].eq[i][j]);
+    //       printf("%u  ", equations[i][j]);
     //     }
     //   }
     //   printf("\n");
