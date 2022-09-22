@@ -75,6 +75,8 @@
 #  endif
 #endif
 
+#define EQ_COLUMN 11 // 索引矩阵列数
+
 // 定义一个全局变量用于记录 equations 中每一行的非零索引
 uint8_t eq_index[R_BITS] = {0};
 
@@ -112,6 +114,21 @@ uint8_t eq_index[R_BITS] = {0};
 //   }
 // }
 
+// TODO 将增广常数的值赋值给索引矩阵
+// _INLINE_ void
+// assign_constants(OUT uint16_t *out, IN const uint8_t *in)
+// {
+//   for(size_t i = 0; i < R_QW - 1; i++){
+//     for(uint8_t index = 0, location = 1; location != 0; location <<= 1)
+//     {
+//       if(location & in[i] != 0){
+
+//       }
+//       index++;
+//     }
+//   }
+// }
+
 // 对 qw[2 * R_QW] 循环右移一位, 仅 [185]-[369] 有效
 _INLINE_ void
 rotate_right_one(OUT single_h_t *out, IN const single_h_t *in)
@@ -137,6 +154,7 @@ negate_and(OUT uint8_t      *res,
 }
 
 // 对 bytelen 长字节流, a 和 b '与', 索引存储在 res 行
+// 注意：此处的索引和 wlist 不同的是从 1 开始
 _INLINE_ ret_t
 and_index(OUT uint16_t     *res,
           IN const uint8_t *a,
@@ -161,7 +179,7 @@ and_index(OUT uint16_t     *res,
     if(tmp[i] != 0)
     {
       // 将 location = 00000001 依次左移 和 tmp[i] 与运算找到重合位置
-      for(uint8_t index = 0, location = 1; location != 0; location <<= 1)
+      for(uint8_t index = 1, location = 1; location != 0; location <<= 1)
       {
         if((location & tmp[i]) != 0)
         {
@@ -173,12 +191,12 @@ and_index(OUT uint16_t     *res,
     }
   }
   // 对最后 3 位单独比对
-  tmp[bytelen] = a[bytelen] & b[bytelen] & mask_3;
-  for(uint8_t index_2 = 0, location_2 = 1; location_2 < 8; location_2 <<= 1)
+  tmp[bytelen - 1] = a[bytelen - 1] & b[bytelen - 1] & mask_3;
+  for(uint8_t index_2 = 1, location_2 = 1; location_2 < 8; location_2 <<= 1)
   {
-    if((location_2 & tmp[bytelen]) != 0)
+    if((location_2 & tmp[bytelen - 1]) != 0)
     {
-      res[eq_index[i_eq]] = bytelen * 8 + index_2 + i_N0 * R_BITS;
+      res[eq_index[i_eq]] = (bytelen - 1) * 8 + index_2 + i_N0 * R_BITS;
       eq_index[i_eq]++;
     }
     index_2++;
@@ -538,8 +556,12 @@ decode(OUT split_e_t       *e,
   dup_c_t    constant_term   = {0};
   h_t        h               = {0};
   syndrome_t s;
-  // 定义 11779 行方程组
-  uint16_t equations[R_BITS][10] = {0};
+  // 定义 11779 行方程组, 前 10 个元素用于保存索引, 第 11 个用于存放增广常数
+  uint16_t equations[R_BITS][EQ_COLUMN] = {0};
+  // // 定义 求解矩阵
+  // uint8_t matrix_solver[R_BITS][R_BITS + 1] = {0};
+  // // 定义 结果向量
+  // uint8_t x_solution[2 * R_BITS] = {0};
 
   // 获取 ct 的值
   ct_pad.val[0] = ct->val[0];
@@ -682,7 +704,7 @@ decode(OUT split_e_t       *e,
                        (uint8_t *)rotated_c.val[i].qw, R_SIZE));
       }
 
-      // 对方程组未知数进行构建，两次循环的索引都存储于 equeations 中
+      // 对方程组未知数进行构建，两次循环的索引(从 1 开始)都存储于 equeations 中
       for(uint16_t i_eq = 0; i_eq < R_BITS; i_eq++)
       {
         // 将当前 h 与 black_or_gray_e 与运算
@@ -699,27 +721,72 @@ decode(OUT split_e_t       *e,
                    (uint8_t *)constant_term.val[0].qw,
                    (uint8_t *)rotated_c.val[0].qw, R_SIZE));
 
-    // 查看需要求解的未知数个数
-    printf("\nblack_or_gray_e 的未知数个数：%lu \n",
-           (r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
-            r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw)));
+    // --------------------- 整合解方程函数 ---------------------
+    // 将增广常数 constant_term.val[0].qw 赋值给 equations[i][EQ_COLUMN]
+    // 处理前 11776 位
+    for(uint8_t i = 0; i < R_QW - 1; i++)
+    {
+      for(uint64_t index = 0, location = 1; location != 0; location <<= 1)
+      {
+        if((constant_term.val[0].qw[i] & location) != 0)
+        {
+          equations[64 * i + index][EQ_COLUMN - 1] = 1;
+        }
+        index++;
+      }
+    }
+    // 处理最后三位
+    for(uint64_t index = 0, location = 1; location < 8; location <<= 1)
+    {
+      if((constant_term.val[0].qw[R_QW] & location) != 0)
+      {
+        equations[64 * (R_QW - 1) + index][EQ_COLUMN - 1] = 1;
+      }
+      index++;
+    }
 
-    // // -- test -- 输出 equations 的值
-    // for(uint16_t i = 0; i < 11779; i++)
+    // 给 matrix_solver 矩阵赋值
+    // // TODO 第 11 个元素未赋值
+    // for(uint16_t i = 0; i < R_BITS; i++)
     // {
-    //   if(equations[i][0] == 0)
-    //   {
-    //     continue;
-    //   }
-    //   for(uint8_t j = 0; j < 10; j++)
+    //   for(uint8_t j = 0; j < (EQ_COLUMN - 1); j++)
     //   {
     //     if(equations[i][j] != 0)
     //     {
-    //       printf("%u  ", equations[i][j]);
+    //       matrix_solver[i][equations[i][j] - 1] = 1;
     //     }
     //   }
-    //   printf("\n");
     // }
+
+    // // 查看需要求解的未知数个数
+    // printf("\nblack_or_gray_e 的未知数个数：%lu \n",
+    //        (r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
+    //         r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw)));
+
+    // -- test -- 输出 equations 的值, 并保存到 data_1.txt 中
+    FILE *fp;
+    fp = fopen("data_1.txt", "a");
+    for(uint16_t i = 0; i < 11779; i++)
+    {
+      // if(equations[i][0] == 0)
+      // {
+      //   continue;
+      // }
+      for(uint8_t j = 0; j < 11; j++)
+      {
+        if(j == 10){
+          fprintf(fp, "%u\n", equations[i][j]);
+          continue;
+        }
+        fprintf(fp, "%u,", equations[i][j]);
+        // if(equations[i][j] != 0)
+        // {
+        //   printf("%u  ", equations[i][j]);
+        // }
+      }
+      // printf("\n");
+    }
+    fclose(fp);
 
     // =================================================================
   }
