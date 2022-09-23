@@ -719,7 +719,7 @@ decode(OUT split_e_t       *e,
     // 将 constant_term.val[0] ^ constant_term.val[1] 放入 constant_term.val[0]
     GUARD(gf2x_add((uint8_t *)&constant_term.val[0].qw,
                    (uint8_t *)constant_term.val[0].qw,
-                   (uint8_t *)rotated_c.val[0].qw, R_SIZE));
+                   (uint8_t *)constant_term.val[1].qw, R_SIZE));
 
     // --------------------- 整合解方程函数 ---------------------
     // 将增广常数 constant_term.val[0].qw 赋值给 equations[i][EQ_COLUMN]
