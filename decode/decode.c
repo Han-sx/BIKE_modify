@@ -739,7 +739,7 @@ decode(OUT split_e_t       *e,
     // 处理最后三位
     for(uint64_t index = 0, location = 1; location < 8; location <<= 1)
     {
-      if((constant_term.val[0].qw[R_QW] & location) != 0)
+      if((constant_term.val[0].qw[R_QW - 1] & location) != 0)
       {
         equations[64 * (R_QW - 1) + index][EQ_COLUMN - 1] = 1;
       }
