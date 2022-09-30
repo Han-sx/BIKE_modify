@@ -77,7 +77,7 @@
 
 #define EQ_COLUMN 11 // 索引矩阵列数
 
-// 定义一个全局变量用于记录 equations 中每一行的非零索引
+// 定义一个全局变量用于记录 equations 中每一行的非零索引个数
 uint8_t eq_index[R_BITS] = {0};
 
 // // 用于 将一个 8 位数组转换为十进制 存放于 bin_to_uint8_tmp 中
@@ -133,10 +133,11 @@ uint8_t eq_index[R_BITS] = {0};
 _INLINE_ void
 rotate_right_one(OUT single_h_t *out, IN const single_h_t *in)
 {
-  for(size_t i = 369; i > R_QW - 1; i--)
+  for(size_t i = 369; i > 0; i--)
   {
     out->qw[i] = (in->qw[i] << 1) | (in->qw[i - 1] >> 63);
   }
+  out->qw[0] = in->qw[0] << 1;
 }
 
 // 对 bytelen 长字节流, a 取反并和 b 与 (res = ~a & b)
@@ -148,7 +149,7 @@ negate_and(OUT uint8_t      *res,
 {
   for(uint64_t i = 0; i < bytelen; i++)
   {
-    res[i] = ~a[i] & b[i];
+    res[i] = (~a[i]) & b[i];
   }
   return SUCCESS;
 }
@@ -184,7 +185,7 @@ and_index(OUT uint16_t     *res,
         if((location & tmp[i]) != 0)
         {
           res[eq_index[i_eq]] = i * 8 + index + i_N0 * R_BITS;
-          eq_index[i_eq]++;
+          (eq_index[i_eq])++;
         }
         index++;
       }
@@ -568,7 +569,7 @@ decode(OUT split_e_t       *e,
   ct_pad.val[1] = ct->val[1];
 
   // 从 sk 中获取 h 第一行的 bin
-  // 复制 1473 个字节到 qw 的前 185 个 64 位整型中
+  // 复制 1473 个字节到 qw 的后 185 个 64 位整型中
   memcpy((uint8_t *)&h.val[0].qw[185], sk->bin[0].raw, R_SIZE);
   memcpy((uint8_t *)&h.val[1].qw[185], sk->bin[1].raw, R_SIZE);
 
@@ -774,7 +775,8 @@ decode(OUT split_e_t       *e,
       // }
       for(uint8_t j = 0; j < 11; j++)
       {
-        if(j == 10){
+        if(j == 10)
+        {
           fprintf(fp, "%u\n", equations[i][j]);
           continue;
         }
