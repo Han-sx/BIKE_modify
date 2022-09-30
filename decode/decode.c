@@ -49,6 +49,7 @@
 
 #include "decode.h"
 #include "gf2x.h"
+#include "sampling.h"
 #include "utilities.h"
 #include <string.h>
 
@@ -547,35 +548,19 @@ decode(OUT split_e_t       *e,
        IN const sk_t       *sk)
 {
   // 初始化黑灰数组
-  split_e_t  black_e         = {0};
-  split_e_t  gray_e          = {0};
-  split_e_t  black_or_gray_e = {0};
-  ct_t       ct_remove_BG    = {0};
-  ct_t       ct_pad          = {0};
-  dup_c_t    c               = {0};
-  dup_c_t    rotated_c       = {0};
-  dup_c_t    constant_term   = {0};
-  h_t        h               = {0};
+  split_e_t  black_e           = {0};
+  split_e_t  gray_e            = {0};
+  split_e_t  black_or_gray_e   = {0};
+  ct_t       ct_remove_BG      = {0};
+  ct_t       ct_pad            = {0};
+  h_t        h                 = {0};
+  sk_t       sk_transpose      = {0};
+  syndrome_t pad_constant_term = {0};
+  pad_sk_t   pad_sk_transpose  = {0};
   syndrome_t s;
+
   // 定义 11779 行方程组, 前 10 个元素用于保存索引, 第 11 个用于存放增广常数
   uint16_t equations[R_BITS][EQ_COLUMN] = {0};
-  // // 定义 求解矩阵
-  // uint8_t matrix_solver[R_BITS][R_BITS + 1] = {0};
-  // // 定义 结果向量
-  // uint8_t x_solution[2 * R_BITS] = {0};
-
-  // 获取 ct 的值
-  ct_pad.val[0] = ct->val[0];
-  ct_pad.val[1] = ct->val[1];
-
-  // 从 sk 中获取 h 第一行的 bin
-  // 复制 1473 个字节到 qw 的后 185 个 64 位整型中
-  memcpy((uint8_t *)&h.val[0].qw[185], sk->bin[0].raw, R_SIZE);
-  memcpy((uint8_t *)&h.val[1].qw[185], sk->bin[1].raw, R_SIZE);
-
-  // 复制 h
-  dup_two(&h.val[0]);
-  dup_two(&h.val[1]);
 
   // Reset (init) the error because it is xored in the find_err funcitons.
   // 初始化 e
@@ -598,20 +583,6 @@ decode(OUT split_e_t       *e,
     // 22: th = computeThreshold(s)
     // 参: Bit Flipping Key Encapsulation(v2.1) 17页，Threshold Selection Rule
     printf("\n---->当前迭代阶段: %d<----\n", iter);
-
-    // // 优先获取此轮译码开始的初始 c 值, 获取二进制长度的 c_bin
-    // // 将 1473 长度的十进制 c0 转换为 11784 长度的 c_bin
-    // for(uint32_t i_c0 = 0; i_c0 < 1473; i_c0++)
-    // {
-    //   uint8_t_toBinary(c_pad_tmp, ct->val[0].raw[i_c0]);
-    //   array_concatenation(i_c0 * 8, c_bin, c_pad_tmp);
-    // }
-    // // 将 1473 长度的十进制 h1 转换为 23568 长度的 c_bin
-    // for(uint32_t i_c1 = 0; i_c1 < 1473; i_c1++)
-    // {
-    //   uint8_t_toBinary(c_pad_tmp, ct->val[1].raw[i_c1]);
-    //   array_concatenation(1473 + i_c1 * 8, c_bin, c_pad_tmp);
-    // }
 
     const uint8_t threshold = get_threshold(&s);
 
@@ -679,6 +650,47 @@ decode(OUT split_e_t       *e,
 
     for(uint32_t i = 0; i < N0; i++)
     {
+      // 获取 ct 的值
+      ct_pad.val[i] = ct->val[i];
+
+      // 构造 sk 转置 sk_transpose
+      // 获取 sk 转置的首行索引
+      // 𝜑(A)' = a0 + ar-1X + ar-2X^2 ...
+      for(uint8_t i_DV = 0; i_DV < DV; i_DV++)
+      {
+        if(sk->wlist[i].val[i_DV] != 0)
+        {
+          sk_transpose.wlist[i].val[i_DV] = R_BITS - sk->wlist[i].val[i_DV];
+        }
+        else
+        {
+          sk_transpose.wlist[i].val[i_DV] = sk->wlist[i].val[i_DV];
+        }
+      }
+
+      // Initialize to zero
+      memset((uint64_t *)&pad_sk_transpose[i], 0, (R_BITS + 7) >> 3);
+
+      // 利用 secure_set_bits() 函数将填充索引位置置为 1
+      secure_set_bits((uint64_t *)&pad_sk_transpose[i], sk_transpose.wlist[i].val,
+                      sizeof(pad_sk_transpose[i]), DV);
+
+      sk_transpose.bin[i] = pad_sk_transpose[i].val;
+
+      // // ---- test ----
+      // for(uint8_t i_test = 0; i_test < DV; i_test++)
+      // {
+      //   printf("\n%u", sk_transpose.wlist[i].val[i_test]);
+      // }
+      // print("\nh_transpose\n", (uint64_t *)&sk_transpose.bin[i], R_BITS);
+
+      // 从 sk_transpose 中获取 h 第一行的 bin
+      // 复制 1473 个字节到 qw 的后 185 个 64 位整型中
+      memcpy((uint8_t *)&h.val[i].qw[R_QW], sk_transpose.bin[i].raw, R_SIZE);
+
+      // 对 h 复制一次
+      dup_two(&h.val[i]);
+
       // 将黑灰集合'或'运算(black_e | gray_e) 存放于
       // black_or_gray_e，即所有未知数位
       GUARD(gf2x_add(black_or_gray_e.val[i].raw, black_e.val[i].raw,
@@ -687,23 +699,6 @@ decode(OUT split_e_t       *e,
       // 去除 c 中的未知数位，将 black_or_gray_e 取反后与 c 做与操作
       GUARD(negate_and(ct_remove_BG.val[i].raw, black_or_gray_e.val[i].raw,
                        ct_pad.val[i].raw, R_SIZE));
-
-      // 将 ct_remove_BG 的 uint8 存储结构调整位 uint64
-      // 调整 1473 个字节到 qw 的前 185 个 64 位整型中，并复制三份
-      memcpy((uint8_t *)c.val[i].qw, ct_remove_BG.val[i].raw, R_SIZE);
-      dup(&c.val[i]);
-
-      // 对每个密钥集位索引的校正子进行右循环，这里表示 ct_remove_BG 乘 H 转置
-      for(size_t j = 0; j < DV; j++)
-      {
-        // 输出校验子仅包含一个 R_BITS 旋转，其他 (2 * R_BITS) 位未定义
-        rotate_right(&rotated_c.val[i], &c.val[i], sk->wlist[i].val[j]);
-
-        // 将每个 rotated_c.val[i] 进行异或相加, 保存到 constant_term 中
-        GUARD(gf2x_add((uint8_t *)&constant_term.val[i].qw,
-                       (uint8_t *)constant_term.val[i].qw,
-                       (uint8_t *)rotated_c.val[i].qw, R_SIZE));
-      }
 
       // 对方程组未知数进行构建，两次循环的索引(从 1 开始)都存储于 equeations 中
       for(uint16_t i_eq = 0; i_eq < R_BITS; i_eq++)
@@ -717,10 +712,13 @@ decode(OUT split_e_t       *e,
       }
     }
 
-    // 将 constant_term.val[0] ^ constant_term.val[1] 放入 constant_term.val[0]
-    GUARD(gf2x_add((uint8_t *)&constant_term.val[0].qw,
-                   (uint8_t *)constant_term.val[0].qw,
-                   (uint8_t *)constant_term.val[1].qw, R_SIZE));
+    // --------- fixed bug ---------
+
+    // 将 ct_remove_BG 和 H 相乘, 使用 gf2x_mod_mul(), 得到结果 constant_term
+    // 这里计算方式与 compute_syndrome() 计算方式一致, 可调用此函数构建
+    GUARD(compute_syndrome(&pad_constant_term, &ct_remove_BG, sk));
+
+    // --------- fixed bug ---------
 
     // --------------------- 整合解方程函数 ---------------------
     // 将增广常数 constant_term.val[0].qw 赋值给 equations[i][EQ_COLUMN]
@@ -729,7 +727,7 @@ decode(OUT split_e_t       *e,
     {
       for(uint64_t index = 0, location = 1; location != 0; location <<= 1)
       {
-        if((constant_term.val[0].qw[i] & location) != 0)
+        if((pad_constant_term.qw[i] & location) != 0)
         {
           equations[64 * i + index][EQ_COLUMN - 1] = 1;
         }
@@ -739,7 +737,7 @@ decode(OUT split_e_t       *e,
     // 处理最后三位
     for(uint64_t index = 0, location = 1; location < 8; location <<= 1)
     {
-      if((constant_term.val[0].qw[R_QW - 1] & location) != 0)
+      if((pad_constant_term.qw[R_QW - 1] & location) != 0)
       {
         equations[64 * (R_QW - 1) + index][EQ_COLUMN - 1] = 1;
       }
