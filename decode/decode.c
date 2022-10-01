@@ -199,7 +199,7 @@ and_index(OUT uint16_t     *res,
     if((location_2 & tmp[bytelen - 1]) != 0)
     {
       res[eq_index[i_eq]] = (bytelen - 1) * 8 + index_2 + i_N0 * R_BITS;
-      eq_index[i_eq]++;
+      (eq_index[i_eq])++;
     }
     index_2++;
   }
@@ -671,6 +671,11 @@ decode(OUT split_e_t       *e,
       // Initialize to zero
       memset((uint64_t *)&pad_sk_transpose[i], 0, (R_BITS + 7) >> 3);
 
+      // // ---- test ----
+      // for(uint16_t i_test = 0; i_test < R_SIZE; i_test++){
+      //   printf("\n%4x", pad_sk_transpose[i].val.raw[i]);
+      // }
+
       // 利用 secure_set_bits() 函数将填充索引位置置为 1
       secure_set_bits((uint64_t *)&pad_sk_transpose[i], sk_transpose.wlist[i].val,
                       sizeof(pad_sk_transpose[i]), DV);
@@ -688,8 +693,18 @@ decode(OUT split_e_t       *e,
       // 复制 1473 个字节到 qw 的后 185 个 64 位整型中
       memcpy((uint8_t *)&h.val[i].qw[R_QW], sk_transpose.bin[i].raw, R_SIZE);
 
+      // // ---- test ----
+      // for(uint16_t i_test = 0; i_test < 370; i_test++){
+      //   printf("第 %u 个未复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
+      // }
+
       // 对 h 复制一次
       dup_two(&h.val[i]);
+
+      // // ---- test ----
+      // for(uint16_t i_test = 0; i_test < 370; i_test++){
+      //   printf("第 %u 个复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
+      // }
 
       // 将黑灰集合'或'运算(black_e | gray_e) 存放于
       // black_or_gray_e，即所有未知数位
@@ -700,6 +715,12 @@ decode(OUT split_e_t       *e,
       GUARD(negate_and(ct_remove_BG.val[i].raw, black_or_gray_e.val[i].raw,
                        ct_pad.val[i].raw, R_SIZE));
 
+      // // ---- test ----
+      // printf("ct_remove_BG 的重量: %lu\n", r_bits_vector_weight((r_t
+      // *)ct_remove_BG.val[i].raw)); printf("ct 的重量: %lu\n",
+      // r_bits_vector_weight((r_t *)ct_pad.val[i].raw)); printf("黑灰的重量:
+      // %lu\n", r_bits_vector_weight((r_t *)black_or_gray_e.val[i].raw));
+
       // 对方程组未知数进行构建，两次循环的索引(从 1 开始)都存储于 equeations 中
       for(uint16_t i_eq = 0; i_eq < R_BITS; i_eq++)
       {
@@ -707,6 +728,11 @@ decode(OUT split_e_t       *e,
         // h 的有效位是 [185]-[369]
         GUARD(and_index(equations[i_eq], black_or_gray_e.val[i].raw,
                         (uint8_t *)&h.val[i].qw[R_QW], R_SIZE, i, i_eq));
+
+        // // ---- test ----
+        // printf("第 %d 次循环----", i_eq);
+        // print("\n----循环 h----:", (uint64_t *)&h.val[i].qw[R_QW], R_BITS);
+
         // 对 H 进行 1 bit 循环右移位
         rotate_right_one(&h.val[i], &h.val[i]);
       }
@@ -721,7 +747,7 @@ decode(OUT split_e_t       *e,
     // --------- fixed bug ---------
 
     // --------------------- 整合解方程函数 ---------------------
-    // 将增广常数 constant_term.val[0].qw 赋值给 equations[i][EQ_COLUMN]
+    // 将增广常数 pad_constant_term 赋值给 equations[i][EQ_COLUMN]
     // 处理前 11776 位
     for(uint8_t i = 0; i < R_QW - 1; i++)
     {
