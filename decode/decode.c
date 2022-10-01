@@ -650,6 +650,9 @@ decode(OUT split_e_t       *e,
 
     for(uint32_t i = 0; i < N0; i++)
     {
+      // ---- test ----
+      printf("\n第 %u 次数值\n", i);
+
       // 获取 ct 的值
       ct_pad.val[i] = ct->val[i];
 
@@ -682,12 +685,14 @@ decode(OUT split_e_t       *e,
 
       sk_transpose.bin[i] = pad_sk_transpose[i].val;
 
-      // // ---- test ----
-      // for(uint8_t i_test = 0; i_test < DV; i_test++)
-      // {
-      //   printf("\n%u", sk_transpose.wlist[i].val[i_test]);
-      // }
-      // print("\nh_transpose\n", (uint64_t *)&sk_transpose.bin[i], R_BITS);
+      // ---- test ---- 输出 h 转置后的重量索引
+      printf(" h 转置后的第一行重量索引: \n");
+      for(uint8_t i_test = 0; i_test < DV; i_test++)
+      {
+        printf("\n%u", sk_transpose.wlist[i].val[i_test]);
+      }
+      // ---- test ---- 输出 h 的 bin
+      print("\nh_transpose: \n", (uint64_t *)&sk_transpose.bin[i], R_BITS);
 
       // 从 sk_transpose 中获取 h 第一行的 bin
       // 复制 1473 个字节到 qw 的后 185 个 64 位整型中
@@ -715,11 +720,11 @@ decode(OUT split_e_t       *e,
       GUARD(negate_and(ct_remove_BG.val[i].raw, black_or_gray_e.val[i].raw,
                        ct_pad.val[i].raw, R_SIZE));
 
-      // // ---- test ----
-      // printf("ct_remove_BG 的重量: %lu\n", r_bits_vector_weight((r_t
-      // *)ct_remove_BG.val[i].raw)); printf("ct 的重量: %lu\n",
-      // r_bits_vector_weight((r_t *)ct_pad.val[i].raw)); printf("黑灰的重量:
-      // %lu\n", r_bits_vector_weight((r_t *)black_or_gray_e.val[i].raw));
+      // ---- test ---- 打印 black_or_gray_e
+      print("\nblack_or_gray_e: \n", (uint64_t *)black_or_gray_e.val[i].raw, R_BITS);
+
+      // ---- test ---- 打印 ct_remove_BG
+      print("\nct_remove_BG: \n", (uint64_t *)ct_remove_BG.val[i].raw, R_BITS);
 
       // 对方程组未知数进行构建，两次循环的索引(从 1 开始)都存储于 equeations 中
       for(uint16_t i_eq = 0; i_eq < R_BITS; i_eq++)
@@ -743,6 +748,9 @@ decode(OUT split_e_t       *e,
     // 将 ct_remove_BG 和 H 相乘, 使用 gf2x_mod_mul(), 得到结果 constant_term
     // 这里计算方式与 compute_syndrome() 计算方式一致, 可调用此函数构建
     GUARD(compute_syndrome(&pad_constant_term, &ct_remove_BG, sk));
+
+    // ---- test ---- 打印 pad_constant_term 的值
+    print("\npad_constant_term: \n", (uint64_t *)pad_constant_term.qw, R_BITS);
 
     // --------- fixed bug ---------
 
