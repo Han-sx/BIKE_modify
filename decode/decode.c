@@ -155,6 +155,20 @@ negate_and(OUT uint8_t      *res,
   return SUCCESS;
 }
 
+// 对长字节流, a 和 b 或的值再和 res 或, 保存在 res 中 (res = (a | b) | res)
+_INLINE_ ret_t
+gf2x_or(OUT uint8_t      *res,
+        IN const uint8_t *a,
+        IN const uint8_t *b,
+        IN const uint64_t bytelen)
+{
+  for(uint64_t i = 0; i < bytelen; i++)
+  {
+    res[i] = a[i] | b[i] | res[i];
+  }
+  return SUCCESS;
+}
+
 // 对 bytelen 长字节流, a 和 b '与', 索引存储在 res 行
 // 注意：此处的索引和 wlist 不同的是从 1 开始
 _INLINE_ ret_t
@@ -596,6 +610,14 @@ decode(OUT split_e_t       *e,
     // 进入 procedure BitFlipIter(s, e, th, H)
     find_err1(e, &black_e, &gray_e, &s, sk->wlist, threshold);
 
+    for(uint8_t i = 0; i < N0; i++)
+    {
+      // 将黑灰集合'或'运算(black_e | gray_e) 存放于
+      // black_or_gray_e，即所有未知数位
+      GUARD(gf2x_or(black_or_gray_e.val[i].raw, black_e.val[i].raw,
+                    gray_e.val[i].raw, R_SIZE));
+    }
+
     // // 输出black_e
     // printf("\n第 %d 轮迭代的black_e:\n", iter);
     // print("\nblack_e0: \n", (uint64_t *)black_e.val[0].raw, R_BITS);
@@ -644,187 +666,239 @@ decode(OUT split_e_t       *e,
     find_err2(e, &gray_e, &s, sk->wlist, ((DV + 1) / 2) + 1);
 
     GUARD(recompute_syndrome(&s, ct, sk, e));
+  }
 
-    // ---------> 增加方程组求解算法(当 s 不为 0) <---------
-    // =================================================================
+  // ---------> 增加方程组求解算法(当 s 不为 0) <---------
+  // =================================================================
 
-    for(uint32_t i = 0; i < N0; i++)
+  for(uint32_t i = 0; i < N0; i++)
+  {
+    // ---- test ----
+    printf("\n第 %u 次数值\n", i);
+
+    // 获取 ct 的值
+    ct_pad.val[i] = ct->val[i];
+
+    // 构造 sk 转置 sk_transpose
+    // 获取 sk 转置的首行索引
+    // 𝜑(A)' = a0 + ar-1X + ar-2X^2 ...
+    for(uint8_t i_DV = 0; i_DV < DV; i_DV++)
     {
-      // ---- test ----
-      printf("\n第 %u 次数值\n", i);
-
-      // 获取 ct 的值
-      ct_pad.val[i] = ct->val[i];
-
-      // 构造 sk 转置 sk_transpose
-      // 获取 sk 转置的首行索引
-      // 𝜑(A)' = a0 + ar-1X + ar-2X^2 ...
-      for(uint8_t i_DV = 0; i_DV < DV; i_DV++)
+      if(sk->wlist[i].val[i_DV] != 0)
       {
-        if(sk->wlist[i].val[i_DV] != 0)
-        {
-          sk_transpose.wlist[i].val[i_DV] = R_BITS - sk->wlist[i].val[i_DV];
-        }
-        else
-        {
-          sk_transpose.wlist[i].val[i_DV] = sk->wlist[i].val[i_DV];
-        }
+        sk_transpose.wlist[i].val[i_DV] = R_BITS - sk->wlist[i].val[i_DV];
       }
-
-      // Initialize to zero
-      memset((uint64_t *)&pad_sk_transpose[i], 0, (R_BITS + 7) >> 3);
-
-      // // ---- test ----
-      // for(uint16_t i_test = 0; i_test < R_SIZE; i_test++){
-      //   printf("\n%4x", pad_sk_transpose[i].val.raw[i]);
-      // }
-
-      // 利用 secure_set_bits() 函数将填充索引位置置为 1
-      secure_set_bits((uint64_t *)&pad_sk_transpose[i], sk_transpose.wlist[i].val,
-                      sizeof(pad_sk_transpose[i]), DV);
-
-      sk_transpose.bin[i] = pad_sk_transpose[i].val;
-
-      // ---- test ---- 输出 h 转置后的重量索引
-      printf(" h 转置后的第一行重量索引: \n");
-      for(uint8_t i_test = 0; i_test < DV; i_test++)
+      else
       {
-        printf("\n%u", sk_transpose.wlist[i].val[i_test]);
-      }
-      // ---- test ---- 输出 h 的 bin
-      print("\nh_transpose: \n", (uint64_t *)&sk_transpose.bin[i], R_BITS);
-
-      // 从 sk_transpose 中获取 h 第一行的 bin
-      // 复制 1473 个字节到 qw 的后 185 个 64 位整型中
-      memcpy((uint8_t *)&h.val[i].qw[R_QW], sk_transpose.bin[i].raw, R_SIZE);
-
-      // // ---- test ----
-      // for(uint16_t i_test = 0; i_test < 370; i_test++){
-      //   printf("第 %u 个未复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
-      // }
-
-      // 对 h 复制一次
-      dup_two(&h.val[i]);
-
-      // // ---- test ----
-      // for(uint16_t i_test = 0; i_test < 370; i_test++){
-      //   printf("第 %u 个复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
-      // }
-
-      // 将黑灰集合'或'运算(black_e | gray_e) 存放于
-      // black_or_gray_e，即所有未知数位
-      GUARD(gf2x_add(black_or_gray_e.val[i].raw, black_e.val[i].raw,
-                     gray_e.val[i].raw, R_SIZE));
-
-      // 去除 c 中的未知数位，将 black_or_gray_e 取反后与 c 做与操作
-      GUARD(negate_and(ct_remove_BG.val[i].raw, black_or_gray_e.val[i].raw,
-                       ct_pad.val[i].raw, R_SIZE));
-
-      // ---- test ---- 打印 black_or_gray_e
-      print("\nblack_or_gray_e: \n", (uint64_t *)black_or_gray_e.val[i].raw,
-            R_BITS);
-
-      // ---- test ---- 打印 ct_remove_BG
-      print("\nct_remove_BG: \n", (uint64_t *)ct_remove_BG.val[i].raw, R_BITS);
-
-      // 对方程组未知数进行构建，两次循环的索引(从 1 开始)都存储于 equeations 中
-      for(uint16_t i_eq = 0; i_eq < R_BITS; i_eq++)
-      {
-        // 将当前 h 与 black_or_gray_e 与运算
-        // h 的有效位是 [185]-[369]
-        GUARD(and_index(equations[i_eq], black_or_gray_e.val[i].raw,
-                        (uint8_t *)&h.val[i].qw[R_QW], R_SIZE, i, i_eq));
-
-        // // ---- test ----
-        // printf("第 %d 次循环----", i_eq);
-        // print("\n----循环 h----:", (uint64_t *)&h.val[i].qw[R_QW], R_BITS);
-
-        // 对 H 进行 1 bit 循环右移位
-        rotate_right_one(&h.val[i], &h.val[i]);
+        sk_transpose.wlist[i].val[i_DV] = sk->wlist[i].val[i_DV];
       }
     }
 
-    // --------- fixed bug ---------
+    // Initialize to zero
+    memset((uint64_t *)&pad_sk_transpose[i], 0, (R_BITS + 7) >> 3);
 
-    // 将 ct_remove_BG 和 H 相乘, 使用 gf2x_mod_mul(), 得到结果 constant_term
-    // 这里计算方式与 compute_syndrome() 计算方式一致, 可调用此函数构建
-    GUARD(compute_syndrome(&pad_constant_term, &ct_remove_BG, sk));
+    // // ---- test ----
+    // for(uint16_t i_test = 0; i_test < R_SIZE; i_test++){
+    //   printf("\n%4x", pad_sk_transpose[i].val.raw[i]);
+    // }
 
-    // ---- test ---- 打印 pad_constant_term 的值
-    print("\npad_constant_term: \n", (uint64_t *)pad_constant_term.qw, R_BITS);
+    // 利用 secure_set_bits() 函数将填充索引位置置为 1
+    secure_set_bits((uint64_t *)&pad_sk_transpose[i], sk_transpose.wlist[i].val,
+                    sizeof(pad_sk_transpose[i]), DV);
 
-    // --------- fixed bug ---------
+    sk_transpose.bin[i] = pad_sk_transpose[i].val;
 
-    // --------------------- 整合解方程函数 ---------------------
-    // 将增广常数 pad_constant_term 赋值给 equations[i][EQ_COLUMN]
-    // 处理前 11776 位
-    for(uint8_t i = 0; i < R_QW - 1; i++)
+    // ---- test ---- 输出 h 转置后的重量索引
+    printf(" h 转置后的第一行重量索引: \n");
+    for(uint8_t i_test = 0; i_test < DV; i_test++)
     {
-      for(uint64_t index = 0, location = 1; location != 0; location <<= 1)
-      {
-        if((pad_constant_term.qw[i] & location) != 0)
-        {
-          equations[64 * i + index][EQ_COLUMN - 1] = 1;
-        }
-        index++;
-      }
+      printf("\n%u", sk_transpose.wlist[i].val[i_test]);
     }
-    // 处理最后三位
-    for(uint64_t index = 0, location = 1; location < 8; location <<= 1)
+    // ---- test ---- 输出 h 的 bin
+    print("\nh_transpose: \n", (uint64_t *)&sk_transpose.bin[i], R_BITS);
+
+    // 从 sk_transpose 中获取 h 第一行的 bin
+    // 复制 1473 个字节到 qw 的后 185 个 64 位整型中
+    memcpy((uint8_t *)&h.val[i].qw[R_QW], sk_transpose.bin[i].raw, R_SIZE);
+
+    // // ---- test ----
+    // for(uint16_t i_test = 0; i_test < 370; i_test++){
+    //   printf("第 %u 个未复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
+    // }
+
+    // 对 h 复制一次
+    dup_two(&h.val[i]);
+
+    // // ---- test ----
+    // for(uint16_t i_test = 0; i_test < 370; i_test++){
+    //   printf("第 %u 个复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
+    // }
+
+    // 获取 black_or_gray_e 的重量
+    printf("未知数总总重量: %lu",
+           (r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
+            r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw)));
+
+    // 去除 c 中的未知数位，将 black_or_gray_e 取反后与 c 做与操作
+    GUARD(negate_and(ct_remove_BG.val[i].raw, black_or_gray_e.val[i].raw,
+                     ct_pad.val[i].raw, R_SIZE));
+
+    // ---- test ---- 打印 black_or_gray_e
+    print("\nblack_or_gray_e: \n", (uint64_t *)black_or_gray_e.val[i].raw,
+          R_BITS);
+
+    // ---- test ---- 打印 ct_remove_BG
+    print("\nct_remove_BG: \n", (uint64_t *)ct_remove_BG.val[i].raw, R_BITS);
+
+    // 对方程组未知数进行构建，两次循环的索引(从 1 开始)都存储于 equeations 中
+    for(uint16_t i_eq = 0; i_eq < R_BITS; i_eq++)
     {
-      if((pad_constant_term.qw[R_QW - 1] & location) != 0)
+      // 将当前 h 与 black_or_gray_e 与运算
+      // h 的有效位是 [185]-[369]
+      GUARD(and_index(equations[i_eq], black_or_gray_e.val[i].raw,
+                      (uint8_t *)&h.val[i].qw[R_QW], R_SIZE, i, i_eq));
+
+      // // ---- test ----
+      // printf("第 %d 次循环----", i_eq);
+      // print("\n----循环 h----:", (uint64_t *)&h.val[i].qw[R_QW], R_BITS);
+
+      // 对 H 进行 1 bit 循环右移位
+      rotate_right_one(&h.val[i], &h.val[i]);
+    }
+  }
+
+  // --------- fixed bug ---------
+
+  // 将 ct_remove_BG 和 H 相乘, 使用 gf2x_mod_mul(), 得到结果 constant_term
+  // 这里计算方式与 compute_syndrome() 计算方式一致, 可调用此函数构建
+  GUARD(compute_syndrome(&pad_constant_term, &ct_remove_BG, sk));
+
+  // ---- test ---- 打印 pad_constant_term 的值
+  print("\npad_constant_term: \n", (uint64_t *)pad_constant_term.qw, R_BITS);
+
+  // --------- fixed bug ---------
+
+  // --------------------- 整合解方程函数 ---------------------
+  // 将增广常数 pad_constant_term 赋值给 equations[i][EQ_COLUMN]
+  // 处理前 11776 位
+  for(uint8_t i = 0; i < R_QW - 1; i++)
+  {
+    for(uint64_t index = 0, location = 1; location != 0; location <<= 1)
+    {
+      if((pad_constant_term.qw[i] & location) != 0)
       {
-        equations[64 * (R_QW - 1) + index][EQ_COLUMN - 1] = 1;
+        equations[64 * i + index][EQ_COLUMN - 1] = 1;
       }
       index++;
     }
-
-    // 给 matrix_solver 矩阵赋值
-    // // TODO 第 11 个元素未赋值
-    // for(uint16_t i = 0; i < R_BITS; i++)
-    // {
-    //   for(uint8_t j = 0; j < (EQ_COLUMN - 1); j++)
-    //   {
-    //     if(equations[i][j] != 0)
-    //     {
-    //       matrix_solver[i][equations[i][j] - 1] = 1;
-    //     }
-    //   }
-    // }
-
-    // // 查看需要求解的未知数个数
-    // printf("\nblack_or_gray_e 的未知数个数：%lu \n",
-    //        (r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
-    //         r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw)));
-
-    // -- test -- 输出 equations 的值, 并保存到 data_1.txt 中
-    FILE *fp;
-    fp = fopen("data_1.txt", "a");
-    for(uint16_t i = 0; i < 11779; i++)
-    {
-      // if(equations[i][0] == 0)
-      // {
-      //   continue;
-      // }
-      for(uint8_t j = 0; j < 11; j++)
-      {
-        if(j == 10)
-        {
-          fprintf(fp, "%u\n", equations[i][j]);
-          continue;
-        }
-        fprintf(fp, "%u,", equations[i][j]);
-        // if(equations[i][j] != 0)
-        // {
-        //   printf("%u  ", equations[i][j]);
-        // }
-      }
-      // printf("\n");
-    }
-    fclose(fp);
-
-    // =================================================================
   }
+  // 处理最后三位
+  for(uint64_t index = 0, location = 1; location < 8; location <<= 1)
+  {
+    if((pad_constant_term.qw[R_QW - 1] & location) != 0)
+    {
+      equations[64 * (R_QW - 1) + index][EQ_COLUMN - 1] = 1;
+    }
+    index++;
+  }
+
+  // // -- test -- 输出 equations 的值, 并保存到 data_1.txt 中
+  // FILE *fp;
+  // fp = fopen("data_1.txt", "a");
+  // for(uint16_t i = 0; i < 11779; i++)
+  // {
+  //   // if(equations[i][0] == 0)
+  //   // {
+  //   //   continue;
+  //   // }
+  //   for(uint8_t j = 0; j < 11; j++)
+  //   {
+  //     if(j == 10)
+  //     {
+  //       fprintf(fp, "%u\n", equations[i][j]);
+  //       continue;
+  //     }
+  //     fprintf(fp, "%u,", equations[i][j]);
+  //     // if(equations[i][j] != 0)
+  //     // {
+  //     //   printf("%u  ", equations[i][j]);
+  //     // }
+  //   }
+  //   // printf("\n");
+  // }
+  // fclose(fp);
+
+  // ---------------- 使用方程求解 ----------------
+#define hang 11779
+#define X    10
+#define N    23558
+#define M    150
+	int i, j;
+	static uint16_t b[N]= { 0 };
+  int y = 0;
+  int t = 0;
+  int c = 0;
+  while(t < X)
+  {
+    for(i = 0; i < hang; i++)
+    {
+      for(j = 0; j < X; j++)
+      {
+        if(equations[i][j] != 0)
+          y++;
+        else
+          break;
+      }
+      if(y == 0)
+      {
+        equations[i][X] = 0;
+        continue;
+      } //过滤全0
+      for(j = 0; j < X; j++)
+      {
+        if(equations[i][j] != 0)
+        {
+          if(b[equations[i][j] - 1] != 0)
+          {
+            equations[i][X] = (equations[i][X] + b[equations[i][j] - 1]) % 2; //直接减去索引的值
+            equations[i][j] = 0;
+          }
+        }
+      }
+      if(y == 1)
+      {
+        for(j = 0; j < X; j++)
+        {
+          if(equations[i][j] != 0)
+          {
+            if(equations[i][X] == 0)
+              b[equations[i][j] - 1] = 2;
+            else
+              b[equations[i][j] - 1] = 1;
+            equations[i][j] = 0;
+            equations[i][X] = 0;
+          }
+        }
+      }
+      y = 0;
+    }
+    for(j = 0; j < N; j++)
+      if(b[j] != 0)
+        c++;
+    if(c == M)
+      t += 100;
+    else
+      t++;
+  }
+  for(j = 0; j < N; j++)
+  {
+    if(b[j] != 0)
+    {
+      printf("%d %d\n", j + 1, (b[j] % 2));
+    }
+  }
+
+  // =================================================================
 
   // 打印当前 e 查看译码结果
   DMSG("\n---->当前译码获得的错误向量如下:<----\n\n")
@@ -841,10 +915,11 @@ decode(OUT split_e_t       *e,
   GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, e->val[0].raw, R_SIZE));
   GUARD(gf2x_add(ct_test[1].val.raw, ct_test[1].val.raw, e->val[1].raw, R_SIZE));
   GUARD(gf2x_mod_mul((uint64_t *)&ct_test[0].val, (uint64_t *)&ct_test[0].val,
-               (uint64_t *)&sk_test[0].val));
+                     (uint64_t *)&sk_test[0].val));
   GUARD(gf2x_mod_mul((uint64_t *)&ct_test[1].val, (uint64_t *)&ct_test[1].val,
-               (uint64_t *)&sk_test[1].val));
-  GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, ct_test[1].val.raw, R_SIZE));
+                     (uint64_t *)&sk_test[1].val));
+  GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, ct_test[1].val.raw,
+                 R_SIZE));
   print("测试结果：", (uint64_t *)&ct_test[0].val, R_BITS);
 
   //  26: if (wt(s) != 0) then
