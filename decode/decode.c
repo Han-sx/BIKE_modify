@@ -721,7 +721,8 @@ decode(OUT split_e_t       *e,
                        ct_pad.val[i].raw, R_SIZE));
 
       // ---- test ---- 打印 black_or_gray_e
-      print("\nblack_or_gray_e: \n", (uint64_t *)black_or_gray_e.val[i].raw, R_BITS);
+      print("\nblack_or_gray_e: \n", (uint64_t *)black_or_gray_e.val[i].raw,
+            R_BITS);
 
       // ---- test ---- 打印 ct_remove_BG
       print("\nct_remove_BG: \n", (uint64_t *)ct_remove_BG.val[i].raw, R_BITS);
@@ -829,6 +830,22 @@ decode(OUT split_e_t       *e,
   DMSG("\n---->当前译码获得的错误向量如下:<----\n\n")
   print("\ndecode_e0: \n", (uint64_t *)e->val[0].raw, R_BITS);
   print("\ndecode_e1: \n", (uint64_t *)e->val[1].raw, R_BITS);
+
+  // ---- test ---- 测试 (ct + e) * h = 0
+  dbl_pad_ct_t ct_test = {0};
+  dbl_pad_pk_t sk_test = {0};
+  ct_test[0].val       = ct->val[0];
+  ct_test[1].val       = ct->val[1];
+  sk_test[0].val       = sk->bin[0];
+  sk_test[1].val       = sk->bin[1];
+  GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, e->val[0].raw, R_SIZE));
+  GUARD(gf2x_add(ct_test[1].val.raw, ct_test[1].val.raw, e->val[1].raw, R_SIZE));
+  GUARD(gf2x_mod_mul((uint64_t *)&ct_test[0].val, (uint64_t *)&ct_test[0].val,
+               (uint64_t *)&sk_test[0].val));
+  GUARD(gf2x_mod_mul((uint64_t *)&ct_test[1].val, (uint64_t *)&ct_test[1].val,
+               (uint64_t *)&sk_test[1].val));
+  GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, ct_test[1].val.raw, R_SIZE));
+  print("测试结果：", (uint64_t *)&ct_test[0].val, R_BITS);
 
   //  26: if (wt(s) != 0) then
   //  27:     return ⊥(ERROR)
