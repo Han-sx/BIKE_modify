@@ -735,11 +735,6 @@ decode(OUT split_e_t       *e,
     //   printf("第 %u 个复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
     // }
 
-    // 获取 black_or_gray_e 的重量
-    printf("未知数总总重量: %lu",
-           (r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
-            r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw)));
-
     // 去除 c 中的未知数位，将 black_or_gray_e 取反后与 c 做与操作
     GUARD(negate_and(ct_remove_BG.val[i].raw, black_or_gray_e.val[i].raw,
                      ct_pad.val[i].raw, R_SIZE));
@@ -803,38 +798,45 @@ decode(OUT split_e_t       *e,
     index++;
   }
 
-  // // -- test -- 输出 equations 的值, 并保存到 data_1.txt 中
-  // FILE *fp;
-  // fp = fopen("data_1.txt", "a");
-  // for(uint16_t i = 0; i < 11779; i++)
-  // {
-  //   // if(equations[i][0] == 0)
-  //   // {
-  //   //   continue;
-  //   // }
-  //   for(uint8_t j = 0; j < 11; j++)
-  //   {
-  //     if(j == 10)
-  //     {
-  //       fprintf(fp, "%u\n", equations[i][j]);
-  //       continue;
-  //     }
-  //     fprintf(fp, "%u,", equations[i][j]);
-  //     // if(equations[i][j] != 0)
-  //     // {
-  //     //   printf("%u  ", equations[i][j]);
-  //     // }
-  //   }
-  //   // printf("\n");
-  // }
-  // fclose(fp);
+  // -- test -- 输出 equations 的值, 并保存到 data_1.txt 中
+  FILE *fp;
+  fp = fopen("data_1.txt", "a");
+  for(uint16_t i = 0; i < 11779; i++)
+  {
+    // if(equations[i][0] == 0)
+    // {
+    //   continue;
+    // }
+    for(uint8_t j = 0; j < 11; j++)
+    {
+      if(j == 10)
+      {
+        fprintf(fp, "%u\n", equations[i][j]);
+        continue;
+      }
+      fprintf(fp, "%u,", equations[i][j]);
+      // if(equations[i][j] != 0)
+      // {
+      //   printf("%u  ", equations[i][j]);
+      // }
+    }
+    // printf("\n");
+  }
+  fclose(fp);
+
+  int x_weight = r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
+                 r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw);
+  // 获取 black_or_gray_e 的重量
+  printf("未知数总总重量: %d\n", x_weight);
+
+  // 验证是否所有 e 被包含在黑灰集合里
 
   // ---------------- 使用方程求解 ----------------
   // 结果被保存在 b[23558] 中, 0 被保存为 2, 1 被保存为 1
 #define hang 11779
 #define X    10
 #define N    23558
-#define M    150
+#define M    x_weight
   int             i, j;
   static uint16_t b[N] = {0};
   int             y    = 0;
@@ -902,69 +904,79 @@ decode(OUT split_e_t       *e,
   }
 
   // 检验解方程的正确性, 将 ct_remove_BG 加上解出来的 b 加 e 和 ct 比较
-  ct_verify.val[0] = ct_remove_BG.val[0];
-  ct_verify.val[1] = ct_remove_BG.val[1];
+  ct_verify.val[0] = ct->val[0];
+  ct_verify.val[1] = ct->val[1];
   // 放 0 用 '与', 放 1 用 '或'
   // 定义 11111111 和 00000001 用于计算
-  // uint8_t mask_255 = 255;
+  uint8_t mask_255 = 255;
   uint8_t mask_1   = 1;
+  int     bit_u    = 8;
   // 对第一组操作
-  for(uint16_t i_v = 0; i_v < R_BITS; i_v++)
+  for(int i_v = 0; i_v < R_BITS; i_v++)
   {
     if(b[i_v] != 0)
     {
       b[i_v] = b[i_v] % 2;
       if(b[i_v] == 0)
       {
-        // // 用与操作
-        // ct_verify.val[0].raw[i_v / 8] =
-        //     (mask_255 - (mask_1 << (i_v % 8))) & ct_remove_BG.val[0].raw[i_v / 8];
+        // 用与操作
+        ct_verify.val[0].raw[i_v / bit_u] =
+            (mask_255 ^ (mask_1 << (i_v % bit_u))) & ct_verify.val[0].raw[i_v / bit_u];
       }
       else
       {
         // 用或操作
-        ct_verify.val[0].raw[i_v / 8] =
-            (mask_1 << (i_v % 8)) | ct_remove_BG.val[0].raw[i_v / 8];
+        ct_verify.val[0].raw[i_v / bit_u] =
+            (mask_1 << (i_v % bit_u)) | ct_verify.val[0].raw[i_v / bit_u];
       }
     }
   }
   // 对第二组操作
-  for(uint16_t i_v = R_BITS; i_v < 2 * R_BITS; i_v++)
+  for(int i_v = R_BITS; i_v < 2 * R_BITS; i_v++)
   {
     if(b[i_v] != 0)
     {
       b[i_v] = b[i_v] % 2;
       if(b[i_v] == 0)
       {
-        // // 用与操作
-        // ct_verify.val[1].raw[(i_v - R_BITS) / 8] =
-        //     (mask_255 - (mask_1 << (i_v % 8))) &
-        //     ct_remove_BG.val[0].raw[(i_v - R_BITS) / 8];
+        // 用与操作
+        ct_verify.val[1].raw[(i_v - R_BITS) / bit_u] =
+            (mask_255 ^ (mask_1 << ((i_v - R_BITS) % bit_u))) &
+            ct_verify.val[1].raw[(i_v - R_BITS) / bit_u];
       }
       else
       {
         // 用或操作
-        ct_verify.val[1].raw[(i_v - R_BITS) / 8] =
-            (mask_1 << ((i_v - R_BITS) % 8)) | ct_remove_BG.val[1].raw[(i_v - R_BITS) / 8];
+        ct_verify.val[1].raw[(i_v - R_BITS) / bit_u] =
+            (mask_1 << ((i_v - R_BITS) % bit_u)) |
+            ct_verify.val[1].raw[(i_v - R_BITS) / bit_u];
       }
     }
   }
 
   // 将 ct_verify = mf 和 ct 异或后再异或 e 检查重量
-  GUARD(gf2x_add(ct_verify.val[0].raw, ct_verify.val[0].raw, ct->val[0].raw,
-                 R_SIZE));
-  GUARD(gf2x_add(ct_verify.val[1].raw, ct_verify.val[1].raw, ct->val[1].raw,
-                 R_SIZE));
-  GUARD(gf2x_add(ct_verify.val[0].raw, ct_verify.val[0].raw, e->val[0].raw,
-                 R_SIZE));
-  GUARD(gf2x_add(ct_verify.val[1].raw, ct_verify.val[1].raw, e->val[1].raw,
-                 R_SIZE));
-  uint8_t verify_weight = r_bits_vector_weight((r_t *)ct_verify.val[0].raw) +
-                          r_bits_vector_weight((r_t *)ct_verify.val[1].raw);
-  if(verify_weight != 0)
+  GUARD(gf2x_add((uint8_t *)&ct_verify.val[0].raw, ct_verify.val[0].raw,
+                 e->val[0].raw, R_SIZE));
+  GUARD(gf2x_add((uint8_t *)&ct_verify.val[1].raw, ct_verify.val[1].raw,
+                 e->val[1].raw, R_SIZE));
+  GUARD(gf2x_add((uint8_t *)&ct_verify.val[0].raw, ct_verify.val[0].raw,
+                 ct->val[0].raw, R_SIZE));
+  GUARD(gf2x_add((uint8_t *)&ct_verify.val[1].raw, ct_verify.val[1].raw,
+                 ct->val[1].raw, R_SIZE));
+  uint8_t verify_weight_0 = r_bits_vector_weight((r_t *)ct_verify.val[0].raw);
+  uint8_t verify_weight_1 = r_bits_vector_weight((r_t *)ct_verify.val[1].raw);
+  print("ct_verify.val[0]: ", (uint64_t *)ct_verify.val[0].raw, R_BITS);
+  print("ct_verify.val[1]: ", (uint64_t *)ct_verify.val[1].raw, R_BITS);
+  if(verify_weight_0 || verify_weight_1 != 0)
   {
-    printf("重量不为 0, 重量为: %u", verify_weight);
-  }else{
+    FILE *fp_2;
+    fp_2 = fopen("weight_bad.txt", "a");
+    fprintf(fp_2, "v_0 重量为: %u\n", verify_weight_0);
+    fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
+    fclose(fp_2);
+  }
+  else
+  {
     printf("---- 重量为 0, 方程组求解正确 ----\n");
   }
   // =================================================================
