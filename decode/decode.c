@@ -567,6 +567,7 @@ decode(OUT split_e_t       *e,
   split_e_t  black_or_gray_e   = {0};
   ct_t       ct_remove_BG      = {0};
   ct_t       ct_pad            = {0};
+  ct_t       ct_verify         = {0};
   h_t        h                 = {0};
   sk_t       sk_transpose      = {0};
   syndrome_t pad_constant_term = {0};
@@ -829,15 +830,16 @@ decode(OUT split_e_t       *e,
   // fclose(fp);
 
   // ---------------- 使用方程求解 ----------------
+  // 结果被保存在 b[23558] 中, 0 被保存为 2, 1 被保存为 1
 #define hang 11779
 #define X    10
 #define N    23558
 #define M    150
-	int i, j;
-	static uint16_t b[N]= { 0 };
-  int y = 0;
-  int t = 0;
-  int c = 0;
+  int             i, j;
+  static uint16_t b[N] = {0};
+  int             y    = 0;
+  int             t    = 0;
+  int             c    = 0;
   while(t < X)
   {
     for(i = 0; i < hang; i++)
@@ -860,7 +862,8 @@ decode(OUT split_e_t       *e,
         {
           if(b[equations[i][j] - 1] != 0)
           {
-            equations[i][X] = (equations[i][X] + b[equations[i][j] - 1]) % 2; //直接减去索引的值
+            equations[i][X] =
+                (equations[i][X] + b[equations[i][j] - 1]) % 2; //直接减去索引的值
             equations[i][j] = 0;
           }
         }
@@ -898,6 +901,72 @@ decode(OUT split_e_t       *e,
     }
   }
 
+  // 检验解方程的正确性, 将 ct_remove_BG 加上解出来的 b 加 e 和 ct 比较
+  ct_verify.val[0] = ct_remove_BG.val[0];
+  ct_verify.val[1] = ct_remove_BG.val[1];
+  // 放 0 用 '与', 放 1 用 '或'
+  // 定义 11111111 和 00000001 用于计算
+  // uint8_t mask_255 = 255;
+  uint8_t mask_1   = 1;
+  // 对第一组操作
+  for(uint16_t i_v = 0; i_v < R_BITS; i_v++)
+  {
+    if(b[i_v] != 0)
+    {
+      b[i_v] = b[i_v] % 2;
+      if(b[i_v] == 0)
+      {
+        // // 用与操作
+        // ct_verify.val[0].raw[i_v / 8] =
+        //     (mask_255 - (mask_1 << (i_v % 8))) & ct_remove_BG.val[0].raw[i_v / 8];
+      }
+      else
+      {
+        // 用或操作
+        ct_verify.val[0].raw[i_v / 8] =
+            (mask_1 << (i_v % 8)) | ct_remove_BG.val[0].raw[i_v / 8];
+      }
+    }
+  }
+  // 对第二组操作
+  for(uint16_t i_v = R_BITS; i_v < 2 * R_BITS; i_v++)
+  {
+    if(b[i_v] != 0)
+    {
+      b[i_v] = b[i_v] % 2;
+      if(b[i_v] == 0)
+      {
+        // // 用与操作
+        // ct_verify.val[1].raw[(i_v - R_BITS) / 8] =
+        //     (mask_255 - (mask_1 << (i_v % 8))) &
+        //     ct_remove_BG.val[0].raw[(i_v - R_BITS) / 8];
+      }
+      else
+      {
+        // 用或操作
+        ct_verify.val[1].raw[(i_v - R_BITS) / 8] =
+            (mask_1 << ((i_v - R_BITS) % 8)) | ct_remove_BG.val[1].raw[(i_v - R_BITS) / 8];
+      }
+    }
+  }
+
+  // 将 ct_verify = mf 和 ct 异或后再异或 e 检查重量
+  GUARD(gf2x_add(ct_verify.val[0].raw, ct_verify.val[0].raw, ct->val[0].raw,
+                 R_SIZE));
+  GUARD(gf2x_add(ct_verify.val[1].raw, ct_verify.val[1].raw, ct->val[1].raw,
+                 R_SIZE));
+  GUARD(gf2x_add(ct_verify.val[0].raw, ct_verify.val[0].raw, e->val[0].raw,
+                 R_SIZE));
+  GUARD(gf2x_add(ct_verify.val[1].raw, ct_verify.val[1].raw, e->val[1].raw,
+                 R_SIZE));
+  uint8_t verify_weight = r_bits_vector_weight((r_t *)ct_verify.val[0].raw) +
+                          r_bits_vector_weight((r_t *)ct_verify.val[1].raw);
+  if(verify_weight != 0)
+  {
+    printf("重量不为 0, 重量为: %u", verify_weight);
+  }else{
+    printf("---- 重量为 0, 方程组求解正确 ----\n");
+  }
   // =================================================================
 
   // 打印当前 e 查看译码结果
@@ -905,22 +974,23 @@ decode(OUT split_e_t       *e,
   print("\ndecode_e0: \n", (uint64_t *)e->val[0].raw, R_BITS);
   print("\ndecode_e1: \n", (uint64_t *)e->val[1].raw, R_BITS);
 
-  // ---- test ---- 测试 (ct + e) * h = 0
-  dbl_pad_ct_t ct_test = {0};
-  dbl_pad_pk_t sk_test = {0};
-  ct_test[0].val       = ct->val[0];
-  ct_test[1].val       = ct->val[1];
-  sk_test[0].val       = sk->bin[0];
-  sk_test[1].val       = sk->bin[1];
-  GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, e->val[0].raw, R_SIZE));
-  GUARD(gf2x_add(ct_test[1].val.raw, ct_test[1].val.raw, e->val[1].raw, R_SIZE));
-  GUARD(gf2x_mod_mul((uint64_t *)&ct_test[0].val, (uint64_t *)&ct_test[0].val,
-                     (uint64_t *)&sk_test[0].val));
-  GUARD(gf2x_mod_mul((uint64_t *)&ct_test[1].val, (uint64_t *)&ct_test[1].val,
-                     (uint64_t *)&sk_test[1].val));
-  GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, ct_test[1].val.raw,
-                 R_SIZE));
-  print("测试结果：", (uint64_t *)&ct_test[0].val, R_BITS);
+  // // ---- test ---- 测试 (ct + e) * h = 0
+  // dbl_pad_ct_t ct_test = {0};
+  // dbl_pad_pk_t sk_test = {0};
+  // ct_test[0].val       = ct->val[0];
+  // ct_test[1].val       = ct->val[1];
+  // sk_test[0].val       = sk->bin[0];
+  // sk_test[1].val       = sk->bin[1];
+  // GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, e->val[0].raw,
+  // R_SIZE)); GUARD(gf2x_add(ct_test[1].val.raw, ct_test[1].val.raw,
+  // e->val[1].raw, R_SIZE)); GUARD(gf2x_mod_mul((uint64_t *)&ct_test[0].val,
+  // (uint64_t *)&ct_test[0].val,
+  //                    (uint64_t *)&sk_test[0].val));
+  // GUARD(gf2x_mod_mul((uint64_t *)&ct_test[1].val, (uint64_t *)&ct_test[1].val,
+  //                    (uint64_t *)&sk_test[1].val));
+  // GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, ct_test[1].val.raw,
+  //                R_SIZE));
+  // print("测试结果：", (uint64_t *)&ct_test[0].val, R_BITS);
 
   //  26: if (wt(s) != 0) then
   //  27:     return ⊥(ERROR)
