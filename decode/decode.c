@@ -78,9 +78,6 @@
 
 #define EQ_COLUMN 11 // 索引矩阵列数
 
-// 定义一个全局变量用于记录 equations 中每一行的非零索引个数
-uint8_t eq_index[R_BITS] = {0};
-
 // // 用于 将一个 8 位数组转换为十进制 存放于 bin_to_uint8_tmp 中
 // void binary_to_uint8_t(uint8_t a[])
 // {
@@ -173,6 +170,7 @@ gf2x_or(OUT uint8_t      *res,
 // 注意：此处的索引和 wlist 不同的是从 1 开始
 _INLINE_ ret_t
 and_index(OUT uint16_t     *res,
+          IN OUT uint8_t   *eq_index,
           IN const uint8_t *a,
           IN const uint8_t *b,
           IN const uint64_t bytelen,
@@ -430,7 +428,7 @@ find_err1(OUT split_e_t                  *e,
           IN const syndrome_t            *syndrome,
           IN const compressed_idx_dv_ar_t wlist,
           IN const uint8_t                threshold,
-          IN const uint8_t                delta)
+          IN const uint8_t                delat)
 {
   // This function uses the bit-slice-adder methodology of [5]:
   // QcBits: Constant-Time Small-Key Code-Based Cryptography
@@ -486,7 +484,7 @@ find_err1(OUT split_e_t                  *e,
     //    For that we reuse the rotated_syndrome variable setting it to all "1".
     // 通过将 “DELTA” δ 添加到 UPC 数组来计算灰度误差数组。
     // 为此，我们重用 rotate_syndrome 变量，将其设置为全“1”。
-    for(size_t l = 0; l < delta; l++)
+    for(size_t l = 0; l < delat; l++)
     {
       memset((uint8_t *)rotated_syndrome.qw, 0xff, R_SIZE);
       bit_sliced_adder(&upc, &rotated_syndrome, SLICES);
@@ -557,20 +555,16 @@ find_err2(OUT split_e_t                  *e,
 
 // 此译码算法依据 QC-MDPC decoders with several shades of gray 中第 4 页
 ret_t
-decode(OUT split_e_t       *e,
+decode(OUT split_e_t       *black_or_gray_e_out,
+       OUT split_e_t       *e,
        IN const syndrome_t *original_s,
        IN const ct_t       *ct,
-       IN const sk_t       *sk)
+       IN const sk_t       *sk,
+       IN const uint8_t     delat)
 {
   // 初始化黑灰数组
   split_e_t  black_e           = {0};
-  split_e_t  black_e_delta_5   = {0};
-  split_e_t  black_e_delta_7   = {0};
-  split_e_t  black_e_delta_9   = {0};
   split_e_t  gray_e            = {0};
-  split_e_t  gray_e_delta_5    = {0};
-  split_e_t  gray_e_delta_7    = {0};
-  split_e_t  gray_e_delta_9    = {0};
   split_e_t  black_or_gray_e   = {0};
   ct_t       ct_remove_BG      = {0};
   ct_t       ct_pad            = {0};
@@ -580,6 +574,9 @@ decode(OUT split_e_t       *e,
   syndrome_t pad_constant_term = {0};
   pad_sk_t   pad_sk_transpose  = {0};
   syndrome_t s;
+
+  // 定义一个全局变量用于记录 equations 中每一行的非零索引个数
+  uint8_t eq_index[R_BITS] = {0};
 
   // 定义 11779 行方程组, 前 10 个元素用于保存索引, 第 11 个用于存放增广常数
   uint16_t equations[R_BITS][EQ_COLUMN] = {0};
@@ -616,8 +613,7 @@ decode(OUT split_e_t       *e,
     // 23:  (s, e, black, gray) = BitFlipIter(s, e, th, H) . Step I
     // H -- sk->wlist
     // 进入 procedure BitFlipIter(s, e, th, H)
-    find_err1(e, &black_e, &gray_e, &s, sk->wlist, threshold, DELTA);
-    // 添加对 DELTA 5 7 9 的测试
+    find_err1(e, &black_e, &gray_e, &s, sk->wlist, threshold, delat);
 
     for(uint8_t i = 0; i < N0; i++)
     {
@@ -759,7 +755,7 @@ decode(OUT split_e_t       *e,
     {
       // 将当前 h 与 black_or_gray_e 与运算
       // h 的有效位是 [185]-[369]
-      GUARD(and_index(equations[i_eq], black_or_gray_e.val[i].raw,
+      GUARD(and_index(equations[i_eq], (uint8_t *)&eq_index, black_or_gray_e.val[i].raw,
                       (uint8_t *)&h.val[i].qw[R_QW], R_SIZE, i, i_eq));
 
       // // ---- test ----
@@ -806,31 +802,31 @@ decode(OUT split_e_t       *e,
     index++;
   }
 
-  // -- test -- 输出 equations 的值, 并保存到 data_1.txt 中
-  FILE *fp;
-  fp = fopen("data_1.txt", "a");
-  for(uint16_t i = 0; i < 11779; i++)
-  {
-    // if(equations[i][0] == 0)
-    // {
-    //   continue;
-    // }
-    for(uint8_t j = 0; j < 11; j++)
-    {
-      if(j == 10)
-      {
-        fprintf(fp, "%u\n", equations[i][j]);
-        continue;
-      }
-      fprintf(fp, "%u,", equations[i][j]);
-      // if(equations[i][j] != 0)
-      // {
-      //   printf("%u  ", equations[i][j]);
-      // }
-    }
-    // printf("\n");
-  }
-  fclose(fp);
+  // // -- test -- 输出 equations 的值, 并保存到 data_1.txt 中
+  // FILE *fp;
+  // fp = fopen("data_1.txt", "a");
+  // for(uint16_t i = 0; i < 11779; i++)
+  // {
+  //   // if(equations[i][0] == 0)
+  //   // {
+  //   //   continue;
+  //   // }
+  //   for(uint8_t j = 0; j < 11; j++)
+  //   {
+  //     if(j == 10)
+  //     {
+  //       fprintf(fp, "%u\n", equations[i][j]);
+  //       continue;
+  //     }
+  //     fprintf(fp, "%u,", equations[i][j]);
+  //     // if(equations[i][j] != 0)
+  //     // {
+  //     //   printf("%u  ", equations[i][j]);
+  //     // }
+  //   }
+  //   // printf("\n");
+  // }
+  // fclose(fp);
 
   int x_weight = r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
                  r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw);
@@ -929,7 +925,8 @@ decode(OUT split_e_t       *e,
       {
         // 用与操作
         ct_verify.val[0].raw[i_v / bit_u] =
-            (mask_255 ^ (mask_1 << (i_v % bit_u))) & ct_verify.val[0].raw[i_v / bit_u];
+            (mask_255 ^ (mask_1 << (i_v % bit_u))) &
+            ct_verify.val[0].raw[i_v / bit_u];
       }
       else
       {
@@ -979,6 +976,7 @@ decode(OUT split_e_t       *e,
   {
     FILE *fp_2;
     fp_2 = fopen("weight_bad.txt", "a");
+    fprintf(fp_2, "当前 delta: %u\n", delat);
     fprintf(fp_2, "v_0 重量为: %u\n", verify_weight_0);
     fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
     fclose(fp_2);
@@ -1019,6 +1017,13 @@ decode(OUT split_e_t       *e,
     DMSG("s 重量不为 0...");
     BIKE_ERROR(E_DECODING_FAILURE);
   }
+
+  // 由于存在全局变量，将 eq_index 重置为 0
+  memset(eq_index, 0, R_BITS);
+
+  // 将 black_or_gray_e 传递出去比较是否包含所有错误向量
+  black_or_gray_e_out->val[0] = black_or_gray_e.val[0];
+  black_or_gray_e_out->val[1] = black_or_gray_e.val[1];
 
   return SUCCESS;
 }
