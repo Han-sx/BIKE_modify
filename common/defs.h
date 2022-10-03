@@ -112,7 +112,7 @@
 ///////////////////////////////////////////
 
 #ifndef VERBOSE
-#  define VERBOSE 4
+#  define VERBOSE 0
 #endif
 
 #ifndef __ASM_FILE__
@@ -173,7 +173,7 @@
 //              Testing
 ///////////////////////////////////////////
 #ifndef NUM_OF_TESTS
-#  define NUM_OF_TESTS 1
+#  define NUM_OF_TESTS 3
 #endif
 
 // Disabled for random testing

@@ -52,7 +52,8 @@ main()
 
     // Key generation 密钥生成
     // h0 h1, σ0 σ1, g 在此步骤中均随机采样
-    MEASURE("  keypair", res = crypto_kem_keypair(pk, sk););
+    // MEASURE("  keypair", res = crypto_kem_keypair(pk, sk););
+    res = crypto_kem_keypair(pk, sk);
 
     if(res != 0)
     {
@@ -64,7 +65,8 @@ main()
 
     // Encapsulate 密钥封装，IN pk, OUT ct and k_enc
     // m 在此步骤中随机采样，过程中获取到 (e0,e1), (c0,c1)，协商密钥 k
-    MEASURE("  encaps", res = crypto_kem_enc(ct, k_enc, pk););
+    // MEASURE("  encaps", res = crypto_kem_enc(ct, k_enc, pk););
+    res = crypto_kem_enc(ct, k_enc, pk);
     if(res != 0)
     {
       MSG("encapsulate failed with error: %d\n", res);
@@ -72,7 +74,8 @@ main()
     }
 
     // Decapsulate 解封装, IN ct and sk, OUT k_dec
-    MEASURE("  decaps", dec_rc = crypto_kem_dec(k_dec, ct, sk););
+    // MEASURE("  decaps", dec_rc = crypto_kem_dec(k_dec, ct, sk););
+    dec_rc = crypto_kem_dec(k_dec, ct, sk);
 
     if(dec_rc != 0)
     {

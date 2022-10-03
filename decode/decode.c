@@ -76,7 +76,10 @@
 #  endif
 #endif
 
-#define EQ_COLUMN 11 // 索引矩阵列数
+#define EQ_COLUMN 101 // 索引矩阵列数
+#define hang R_BITS
+#define X    EQ_COLUMN - 1
+#define N    2 * R_BITS
 
 // // 用于 将一个 8 位数组转换为十进制 存放于 bin_to_uint8_tmp 中
 // void binary_to_uint8_t(uint8_t a[])
@@ -578,7 +581,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   // 定义一个全局变量用于记录 equations 中每一行的非零索引个数
   uint8_t eq_index[R_BITS] = {0};
 
-  // 定义 11779 行方程组, 前 10 个元素用于保存索引, 第 11 个用于存放增广常数
+  // 定义 11779 行方程组, 前 EQ_COLUMN-1 个元素用于保存索引, 第 EQ_COLUMN 个用于存放增广常数
   uint16_t equations[R_BITS][EQ_COLUMN] = {0};
 
   // Reset (init) the error because it is xored in the find_err funcitons.
@@ -601,7 +604,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     // 该算法记录黑/灰掩码中有小间隙的位，以便后续步骤II和步骤III可以使用掩码，以获得翻转位的更多信息
     // 22: th = computeThreshold(s)
     // 参: Bit Flipping Key Encapsulation(v2.1) 17页，Threshold Selection Rule
-    printf("\n---->当前迭代阶段: %d<----\n", iter);
+    // printf("\n---->当前迭代阶段: %d<----\n", iter);
 
     const uint8_t threshold = get_threshold(&s);
 
@@ -628,18 +631,18 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     // print("\nblack_e0: \n", (uint64_t *)black_e.val[0].raw, R_BITS);
     // print("\nblack_e1: \n", (uint64_t *)black_e.val[1].raw, R_BITS);
 
-    // 输出 black_e 和 gray_e 的重量
-    printf("\nblack_e 的重量：%lu \n",
-           (r_bits_vector_weight((r_t *)black_e.val[0].raw) +
-            r_bits_vector_weight((r_t *)black_e.val[1].raw)));
-    printf("\ngray_e 的重量：%lu \n",
-           (r_bits_vector_weight((r_t *)gray_e.val[0].raw) +
-            r_bits_vector_weight((r_t *)gray_e.val[1].raw)));
+    // // 输出 black_e 和 gray_e 的重量
+    // printf("\nblack_e 的重量：%lu \n",
+    //        (r_bits_vector_weight((r_t *)black_e.val[0].raw) +
+    //         r_bits_vector_weight((r_t *)black_e.val[1].raw)));
+    // printf("\ngray_e 的重量：%lu \n",
+    //        (r_bits_vector_weight((r_t *)gray_e.val[0].raw) +
+    //         r_bits_vector_weight((r_t *)gray_e.val[1].raw)));
 
-    // 输出当前迭代的第 I 步骤中的 e
-    printf("\n第 %d 轮迭代的 e:\n", iter);
-    print("\ntmp_find_e0: \n", (uint64_t *)e->val[0].raw, R_BITS);
-    print("\ntmp_find_e1: \n", (uint64_t *)e->val[1].raw, R_BITS);
+    // // 输出当前迭代的第 I 步骤中的 e
+    // printf("\n第 %d 轮迭代的 e:\n", iter);
+    // print("\ntmp_find_e0: \n", (uint64_t *)e->val[0].raw, R_BITS);
+    // print("\ntmp_find_e1: \n", (uint64_t *)e->val[1].raw, R_BITS);
 
     // 10:  s = H(cT + eT ) . 更新校验子 syndrome
     GUARD(recompute_syndrome(&s, ct, sk, e));
@@ -678,8 +681,8 @@ decode(OUT split_e_t       *black_or_gray_e_out,
 
   for(uint32_t i = 0; i < N0; i++)
   {
-    // ---- test ----
-    printf("\n第 %u 次数值\n", i);
+    // // ---- test ----
+    // printf("\n第 %u 次数值\n", i);
 
     // 获取 ct 的值
     ct_pad.val[i] = ct->val[i];
@@ -713,14 +716,14 @@ decode(OUT split_e_t       *black_or_gray_e_out,
 
     sk_transpose.bin[i] = pad_sk_transpose[i].val;
 
-    // ---- test ---- 输出 h 转置后的重量索引
-    printf(" h 转置后的第一行重量索引: \n");
-    for(uint8_t i_test = 0; i_test < DV; i_test++)
-    {
-      printf("\n%u", sk_transpose.wlist[i].val[i_test]);
-    }
-    // ---- test ---- 输出 h 的 bin
-    print("\nh_transpose: \n", (uint64_t *)&sk_transpose.bin[i], R_BITS);
+    // // ---- test ---- 输出 h 转置后的重量索引
+    // printf(" h 转置后的第一行重量索引: \n");
+    // for(uint8_t i_test = 0; i_test < DV; i_test++)
+    // {
+    //   printf("\n%u", sk_transpose.wlist[i].val[i_test]);
+    // }
+    // // ---- test ---- 输出 h 的 bin
+    // print("\nh_transpose: \n", (uint64_t *)&sk_transpose.bin[i], R_BITS);
 
     // 从 sk_transpose 中获取 h 第一行的 bin
     // 复制 1473 个字节到 qw 的后 185 个 64 位整型中
@@ -811,9 +814,9 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   //   // {
   //   //   continue;
   //   // }
-  //   for(uint8_t j = 0; j < 11; j++)
+  //   for(uint8_t j = 0; j < EQ_COLUMN; j++)
   //   {
-  //     if(j == 10)
+  //     if(j == (EQ_COLUMN-1))
   //     {
   //       fprintf(fp, "%u\n", equations[i][j]);
   //       continue;
@@ -830,19 +833,15 @@ decode(OUT split_e_t       *black_or_gray_e_out,
 
   int x_weight = r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
                  r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw);
-  // 获取 black_or_gray_e 的重量
-  printf("未知数总总重量: %d\n", x_weight);
 
-  // 验证是否所有 e 被包含在黑灰集合里
+  // // 获取 black_or_gray_e 的重量
+  // printf("未知数总总重量: %d\n", x_weight);
 
   // ---------------- 使用方程求解 ----------------
   // 结果被保存在 b[23558] 中, 0 被保存为 2, 1 被保存为 1
-#define hang 11779
-#define X    10
-#define N    23558
-#define M    x_weight
+  int M = x_weight;
   int             i, j;
-  static uint16_t b[N] = {0};
+  uint16_t b[N] = {0};
   int             y    = 0;
   int             t    = 0;
   int             c    = 0;
@@ -899,13 +898,13 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     else
       t++;
   }
-  for(j = 0; j < N; j++)
-  {
-    if(b[j] != 0)
-    {
-      printf("%d %d\n", j + 1, (b[j] % 2));
-    }
-  }
+  // for(j = 0; j < N; j++)
+  // {
+  //   if(b[j] != 0)
+  //   {
+  //     printf("%d %d\n", j + 1, (b[j] % 2));
+  //   }
+  // }
 
   // 检验解方程的正确性, 将 ct_remove_BG 加上解出来的 b 加 e 和 ct 比较
   ct_verify.val[0] = ct->val[0];
@@ -981,16 +980,16 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
     fclose(fp_2);
   }
-  else
-  {
-    printf("---- 重量为 0, 方程组求解正确 ----\n");
-  }
+  // else
+  // {
+  //   printf("---- 重量为 0, 方程组求解正确 ----\n");
+  // }
   // =================================================================
 
-  // 打印当前 e 查看译码结果
-  DMSG("\n---->当前译码获得的错误向量如下:<----\n\n")
-  print("\ndecode_e0: \n", (uint64_t *)e->val[0].raw, R_BITS);
-  print("\ndecode_e1: \n", (uint64_t *)e->val[1].raw, R_BITS);
+  // // 打印当前 e 查看译码结果
+  // DMSG("\n---->当前译码获得的错误向量如下:<----\n\n")
+  // print("\ndecode_e0: \n", (uint64_t *)e->val[0].raw, R_BITS);
+  // print("\ndecode_e1: \n", (uint64_t *)e->val[1].raw, R_BITS);
 
   // // ---- test ---- 测试 (ct + e) * h = 0
   // dbl_pad_ct_t ct_test = {0};
@@ -1018,8 +1017,8 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     BIKE_ERROR(E_DECODING_FAILURE);
   }
 
-  // 由于存在全局变量，将 eq_index 重置为 0
-  memset(eq_index, 0, R_BITS);
+  // // 由于存在全局变量，将 eq_index 重置为 0
+  // memset(eq_index, 0, R_BITS);
 
   // 将 black_or_gray_e 传递出去比较是否包含所有错误向量
   black_or_gray_e_out->val[0] = black_or_gray_e.val[0];

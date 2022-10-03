@@ -290,11 +290,11 @@ crypto_kem_keypair(OUT unsigned char *pk, OUT unsigned char *sk)
   GUARD(generate_sparse_rep((uint64_t *)&p_sk[0], l_sk->wlist[0].val, DV, R_BITS,
                             sizeof(p_sk[0]), &h_prf_state));
 
-  printf("\nl_sk->wlist[0]的索引值(h0中1的位置): \n");
-  for(uint32_t y = 0; y < 71; y++)
-  {
-    printf("%u\n", (l_sk->wlist[0].val)[y]);
-  }
+  // printf("\nl_sk->wlist[0]的索引值(h0中1的位置): \n");
+  // for(uint32_t y = 0; y < 71; y++)
+  // {
+  //   printf("%u\n", (l_sk->wlist[0].val)[y]);
+  // }
 
   // Copy data
   l_sk->bin[0] = p_sk[0].val;
@@ -310,11 +310,11 @@ crypto_kem_keypair(OUT unsigned char *pk, OUT unsigned char *sk)
   GUARD(generate_sparse_rep((uint64_t *)&p_sk[1], l_sk->wlist[1].val, DV, R_BITS,
                             sizeof(p_sk[1]), &h_prf_state));
 
-  printf("\nl_sk->wlist[1]的索引值(h1中1的位置): \n");
-  for(uint32_t z = 0; z < 71; z++)
-  {
-    printf("%u\n", (l_sk->wlist[1].val)[z]);
-  }
+  // printf("\nl_sk->wlist[1]的索引值(h1中1的位置): \n");
+  // for(uint32_t z = 0; z < 71; z++)
+  // {
+  //   printf("%u\n", (l_sk->wlist[1].val)[z]);
+  // }
 
   // Copy data
   l_sk->bin[1] = p_sk[1].val;
@@ -450,27 +450,27 @@ crypto_kem_dec(OUT unsigned char      *ss,
                            : 1;
   if(dec_ret_5 == 0)
   {
-    printf("5 译码失败\n");
+    // printf("5 译码失败\n");
   }
   else
   {
-    printf("5 译码成功\n");
+    // printf("5 译码成功\n");
   }
   if(dec_ret_7 == 0)
   {
-    printf("7 译码失败\n");
+    // printf("7 译码失败\n");
   }
   else
   {
-    printf("7 译码成功\n");
+    // printf("7 译码成功\n");
   }
   if(dec_ret_9 == 0)
   {
-    printf("9 译码失败\n");
+    // printf("9 译码失败\n");
   }
   else
   {
-    printf("9 译码成功\n");
+    // printf("9 译码成功\n");
   }
 
   // 检查 black_or_gray_e_out 是否覆盖所有错误向量
@@ -481,8 +481,8 @@ crypto_kem_dec(OUT unsigned char      *ss,
   split_e_t res_include_9 = {0};
   for(uint8_t i_N0 = 0; i_N0 < N0; i_N0++)
   {
-    GUARD(gf2x_add((uint8_t *)&res_include.val[i_N0].raw, black_or_gray_e_out.val[i_N0].raw,
-                   R_e.val[i_N0].raw, R_SIZE));
+    GUARD(gf2x_add((uint8_t *)&res_include.val[i_N0].raw,
+                   black_or_gray_e_out.val[i_N0].raw, R_e.val[i_N0].raw, R_SIZE));
     GUARD(gf2x_add((uint8_t *)&res_include_5.val[i_N0].raw,
                    black_or_gray_e_out_5.val[i_N0].raw, R_e.val[i_N0].raw,
                    R_SIZE));
@@ -523,32 +523,44 @@ crypto_kem_dec(OUT unsigned char      *ss,
       r_bits_vector_weight((r_t *)black_or_gray_e_out_9.val[1].raw) -
       r_bits_vector_weight((r_t *)R_e.val[0].raw) -
       r_bits_vector_weight((r_t *)R_e.val[1].raw);
-  
+
   // 判断是否两者重量相等
   FILE *fp;
   fp = fopen("error_vector_include.txt", "a");
-  if (res_weight == reduce_weight){
+  if(res_weight == reduce_weight)
+  {
     fprintf(fp, "3 重量相等, 包含所有错误向量\n");
-  }else{
+  }
+  else
+  {
     fprintf(fp, "3 重量不相等, 不包含所有错误向量\n");
   }
-  if (res_weight_5 == reduce_weight_5){
+  if(res_weight_5 == reduce_weight_5)
+  {
     fprintf(fp, "5 重量相等, 包含所有错误向量\n");
-  }else{
+  }
+  else
+  {
     fprintf(fp, "5 重量不相等, 不包含所有错误向量\n");
   }
-  if (res_weight_7 == reduce_weight_7){
+  if(res_weight_7 == reduce_weight_7)
+  {
     fprintf(fp, "7 重量相等, 包含所有错误向量\n");
-  }else{
+  }
+  else
+  {
     fprintf(fp, "7 重量不相等, 不包含所有错误向量\n");
   }
-  if (res_weight_9 == reduce_weight_9){
+  if(res_weight_9 == reduce_weight_9)
+  {
     fprintf(fp, "9 重量相等, 包含所有错误向量\n");
-  }else{
+  }
+  else
+  {
     fprintf(fp, "9 重量不相等, 不包含所有错误向量\n");
   }
-  fclose(fp);  
-  
+  fclose(fp);
+
   DEFER_CLEANUP(split_e_t e2, split_e_cleanup);
   DEFER_CLEANUP(pad_ct_t ce, pad_ct_cleanup);
 
@@ -582,5 +594,6 @@ crypto_kem_dec(OUT unsigned char      *ss,
 
   // 将全局变量重置为 0
   memset((uint8_t *)&R_e, 0, sizeof(split_e_t));
+
   return SUCCESS;
 }
