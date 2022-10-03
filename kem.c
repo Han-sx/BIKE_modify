@@ -432,19 +432,19 @@ crypto_kem_dec(OUT unsigned char      *ss,
 
   DMSG("  Decoding.\n"); // 使用黑灰译码，IN syndrome, l_ct and l_sk, OUT e
   uint32_t dec_ret =
-      decode(&black_or_gray_e_out, &e, &syndrome, l_ct, l_sk, DELTA) != SUCCESS
+      decode(&black_or_gray_e_out, &e, &R_e, &syndrome, l_ct, l_sk, DELTA) != SUCCESS
           ? 0
           : 1;
   // 添加对 delta 5 7 9 的测试
-  uint32_t dec_ret_5 = decode(&black_or_gray_e_out_5, &e_5, &syndrome_5, l_ct,
+  uint32_t dec_ret_5 = decode(&black_or_gray_e_out_5, &e_5, &R_e, &syndrome_5, l_ct,
                               l_sk, DELTA_5) != SUCCESS
                            ? 0
                            : 1;
-  uint32_t dec_ret_7 = decode(&black_or_gray_e_out_7, &e_7, &syndrome_7, l_ct,
+  uint32_t dec_ret_7 = decode(&black_or_gray_e_out_7, &e_7, &R_e, &syndrome_7, l_ct,
                               l_sk, DELTA_7) != SUCCESS
                            ? 0
                            : 1;
-  uint32_t dec_ret_9 = decode(&black_or_gray_e_out_9, &e_9, &syndrome_9, l_ct,
+  uint32_t dec_ret_9 = decode(&black_or_gray_e_out_9, &e_9, &R_e, &syndrome_9, l_ct,
                               l_sk, DELTA_9) != SUCCESS
                            ? 0
                            : 1;

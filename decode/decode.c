@@ -560,6 +560,7 @@ find_err2(OUT split_e_t                  *e,
 ret_t
 decode(OUT split_e_t       *black_or_gray_e_out,
        OUT split_e_t       *e,
+       IN const split_e_t  *R_e,
        IN const syndrome_t *original_s,
        IN const ct_t       *ct,
        IN const sk_t       *sk,
@@ -960,9 +961,9 @@ decode(OUT split_e_t       *black_or_gray_e_out,
 
   // 将 ct_verify = mf 和 ct 异或后再异或 e 检查重量
   GUARD(gf2x_add((uint8_t *)&ct_verify.val[0].raw, ct_verify.val[0].raw,
-                 e->val[0].raw, R_SIZE));
+                 R_e->val[0].raw, R_SIZE));
   GUARD(gf2x_add((uint8_t *)&ct_verify.val[1].raw, ct_verify.val[1].raw,
-                 e->val[1].raw, R_SIZE));
+                 R_e->val[1].raw, R_SIZE));
   GUARD(gf2x_add((uint8_t *)&ct_verify.val[0].raw, ct_verify.val[0].raw,
                  ct->val[0].raw, R_SIZE));
   GUARD(gf2x_add((uint8_t *)&ct_verify.val[1].raw, ct_verify.val[1].raw,
@@ -1015,7 +1016,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   {
     FILE *fp_3;
     fp_3 = fopen("weight_bad.txt", "a");
-    fprintf(fp_3, "黑灰译码失败\n");
+    fprintf(fp_3, "黑灰译码失败\n\n");
     fclose(fp_3);
     DMSG("s 重量不为 0...");
     BIKE_ERROR(E_DECODING_FAILURE);
