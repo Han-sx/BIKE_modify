@@ -48,6 +48,8 @@ main()
   {
     int res = 0;
 
+    printf("Code test: %d\n",i);
+
     MSG("Code test: %d\n\n", i);
 
     // Key generation 密钥生成

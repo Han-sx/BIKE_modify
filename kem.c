@@ -529,35 +529,35 @@ crypto_kem_dec(OUT unsigned char      *ss,
   fp = fopen("error_vector_include.txt", "a");
   if(res_weight == reduce_weight)
   {
-    fprintf(fp, "3 重量相等, 包含所有错误向量\n");
+    // fprintf(fp, "3 重量相等, 包含所有错误向量\n");
   }
   else
   {
-    fprintf(fp, "3 重量不相等, 不包含所有错误向量\n");
+    fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA);
   }
   if(res_weight_5 == reduce_weight_5)
   {
-    fprintf(fp, "5 重量相等, 包含所有错误向量\n");
+    // fprintf(fp, "5 重量相等, 包含所有错误向量\n");
   }
   else
   {
-    fprintf(fp, "5 重量不相等, 不包含所有错误向量\n");
+    fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA_5);
   }
   if(res_weight_7 == reduce_weight_7)
   {
-    fprintf(fp, "7 重量相等, 包含所有错误向量\n");
+    // fprintf(fp, "7 重量相等, 包含所有错误向量\n");
   }
   else
   {
-    fprintf(fp, "7 重量不相等, 不包含所有错误向量\n");
+    fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA_7);
   }
   if(res_weight_9 == reduce_weight_9)
   {
-    fprintf(fp, "9 重量相等, 包含所有错误向量\n");
+    // fprintf(fp, "9 重量相等, 包含所有错误向量\n");
   }
   else
   {
-    fprintf(fp, "9 重量不相等, 不包含所有错误向量\n");
+    fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n\n", DELTA_9);
   }
   fclose(fp);
 

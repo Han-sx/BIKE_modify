@@ -622,7 +622,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     {
       // 将黑灰集合'或'运算(black_e | gray_e) 存放于
       // black_or_gray_e，即所有未知数位
-      GUARD(gf2x_or(black_or_gray_e.val[i].raw, black_e.val[i].raw,
+      GUARD(gf2x_or((uint8_t *)&black_or_gray_e.val[i].raw, black_e.val[i].raw,
                     gray_e.val[i].raw, R_SIZE));
     }
 
@@ -835,7 +835,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
                  r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw);
 
   // // 获取 black_or_gray_e 的重量
-  // printf("未知数总总重量: %d\n", x_weight);
+  // printf("德尔塔: %d 未知数总总重量: %d\n", delat, x_weight);
 
   // ---------------- 使用方程求解 ----------------
   // 结果被保存在 b[23558] 中, 0 被保存为 2, 1 被保存为 1
@@ -975,9 +975,9 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   {
     FILE *fp_2;
     fp_2 = fopen("weight_bad.txt", "a");
-    fprintf(fp_2, "当前 delta: %u\n", delat);
-    fprintf(fp_2, "v_0 重量为: %u\n", verify_weight_0);
-    fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
+    fprintf(fp_2, "当前 delta 解方程失败: %u\n", delat);
+    // fprintf(fp_2, "v_0 重量为: %u\n", verify_weight_0);
+    // fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
     fclose(fp_2);
   }
   // else
@@ -1013,6 +1013,10 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   //  27:     return ⊥(ERROR)
   if(r_bits_vector_weight((r_t *)s.qw) > 0)
   {
+    FILE *fp_3;
+    fp_3 = fopen("weight_bad.txt", "a");
+    fprintf(fp_3, "黑灰译码失败\n");
+    fclose(fp_3);
     DMSG("s 重量不为 0...");
     BIKE_ERROR(E_DECODING_FAILURE);
   }
