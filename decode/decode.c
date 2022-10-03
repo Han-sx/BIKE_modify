@@ -838,7 +838,7 @@ decode(OUT split_e_t       *e,
 #define N    23558
 #define M    x_weight
   int             i, j;
-  static uint16_t b[N] = {0};
+  uint16_t b[N] = {0};
   int             y    = 0;
   int             t    = 0;
   int             c    = 0;
