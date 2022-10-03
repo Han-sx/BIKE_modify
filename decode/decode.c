@@ -429,7 +429,8 @@ find_err1(OUT split_e_t                  *e,
           OUT split_e_t                  *gray_e,
           IN const syndrome_t            *syndrome,
           IN const compressed_idx_dv_ar_t wlist,
-          IN const uint8_t                threshold)
+          IN const uint8_t                threshold,
+          IN const uint8_t                delta)
 {
   // This function uses the bit-slice-adder methodology of [5]:
   // QcBits: Constant-Time Small-Key Code-Based Cryptography
@@ -485,7 +486,7 @@ find_err1(OUT split_e_t                  *e,
     //    For that we reuse the rotated_syndrome variable setting it to all "1".
     // 通过将 “DELTA” δ 添加到 UPC 数组来计算灰度误差数组。
     // 为此，我们重用 rotate_syndrome 变量，将其设置为全“1”。
-    for(size_t l = 0; l < DELTA; l++)
+    for(size_t l = 0; l < delta; l++)
     {
       memset((uint8_t *)rotated_syndrome.qw, 0xff, R_SIZE);
       bit_sliced_adder(&upc, &rotated_syndrome, SLICES);
@@ -563,7 +564,13 @@ decode(OUT split_e_t       *e,
 {
   // 初始化黑灰数组
   split_e_t  black_e           = {0};
+  split_e_t  black_e_delta_5   = {0};
+  split_e_t  black_e_delta_7   = {0};
+  split_e_t  black_e_delta_9   = {0};
   split_e_t  gray_e            = {0};
+  split_e_t  gray_e_delta_5    = {0};
+  split_e_t  gray_e_delta_7    = {0};
+  split_e_t  gray_e_delta_9    = {0};
   split_e_t  black_or_gray_e   = {0};
   ct_t       ct_remove_BG      = {0};
   ct_t       ct_pad            = {0};
@@ -609,7 +616,8 @@ decode(OUT split_e_t       *e,
     // 23:  (s, e, black, gray) = BitFlipIter(s, e, th, H) . Step I
     // H -- sk->wlist
     // 进入 procedure BitFlipIter(s, e, th, H)
-    find_err1(e, &black_e, &gray_e, &s, sk->wlist, threshold);
+    find_err1(e, &black_e, &gray_e, &s, sk->wlist, threshold, DELTA);
+    // 添加对 DELTA 5 7 9 的测试
 
     for(uint8_t i = 0; i < N0; i++)
     {
