@@ -27,6 +27,21 @@
 // 定义全局变量,用于测试是否包括所有错误位置
 split_e_t R_e = {0};
 
+// 与运算函数
+// 对长字节流, a 和 b 与, 保存在 res 中 res = (a & b)
+_INLINE_ ret_t
+gf2x_and(OUT uint8_t      *res,
+         IN const uint8_t *a,
+         IN const uint8_t *b,
+         IN const uint64_t bytelen)
+{
+  for(uint64_t i = 0; i < bytelen; i++)
+  {
+    res[i] = a[i] & b[i];
+  }
+  return SUCCESS;
+}
+
 _INLINE_ void
 split_e(OUT split_e_t *splitted_e, IN const e_t *e)
 {
@@ -395,9 +410,9 @@ crypto_kem_dec(OUT unsigned char      *ss,
 
   // 增加 black_or_gray_e_out 用来验证是否包含所有错误向量
   split_e_t black_or_gray_e_out   = {0};
-  split_e_t black_or_gray_e_out_5 = {0};
-  split_e_t black_or_gray_e_out_7 = {0};
-  split_e_t black_or_gray_e_out_9 = {0};
+  // split_e_t black_or_gray_e_out_5 = {0};
+  // split_e_t black_or_gray_e_out_7 = {0};
+  // split_e_t black_or_gray_e_out_9 = {0};
 
   // Convert to the types used by this implementation
   const sk_t *l_sk = (const sk_t *)sk;
@@ -430,136 +445,243 @@ crypto_kem_dec(OUT unsigned char      *ss,
   //   printf("第 %u 个 syndrome->qw 的值为: %lu\n", i_qw, syndrome.qw[i_qw]);
   // }
 
+  // 用于检测错误向量是否包含
+  split_e_t res_include   = {0};
+  // split_e_t res_include_5 = {0};
+  // split_e_t res_include_7 = {0};
+  // split_e_t res_include_9 = {0};
+
+  // e 的重量
+  uint16_t e_weight = r_bits_vector_weight((r_t *)R_e.val[0].raw) +
+                      r_bits_vector_weight((r_t *)R_e.val[1].raw);
+
   DMSG("  Decoding.\n"); // 使用黑灰译码，IN syndrome, l_ct and l_sk, OUT e
+  uint8_t  flag = 0;
   uint32_t dec_ret =
-      decode(&black_or_gray_e_out, &e, &R_e, &syndrome, l_ct, l_sk, DELTA) != SUCCESS
+      decode((split_e_t *)&black_or_gray_e_out, &e, (uint8_t *)&flag, &R_e,
+             &syndrome, l_ct, l_sk, DELTA) != SUCCESS
           ? 0
           : 1;
-  // 添加对 delta 5 7 9 的测试
-  uint32_t dec_ret_5 = decode(&black_or_gray_e_out_5, &e_5, &R_e, &syndrome_5, l_ct,
-                              l_sk, DELTA_5) != SUCCESS
-                           ? 0
-                           : 1;
-  uint32_t dec_ret_7 = decode(&black_or_gray_e_out_7, &e_7, &R_e, &syndrome_7, l_ct,
-                              l_sk, DELTA_7) != SUCCESS
-                           ? 0
-                           : 1;
-  uint32_t dec_ret_9 = decode(&black_or_gray_e_out_9, &e_9, &R_e, &syndrome_9, l_ct,
-                              l_sk, DELTA_9) != SUCCESS
-                           ? 0
-                           : 1;
-  if(dec_ret_5 == 0)
-  {
-    // printf("5 译码失败\n");
-  }
-  else
-  {
-    // printf("5 译码成功\n");
-  }
-  if(dec_ret_7 == 0)
-  {
-    // printf("7 译码失败\n");
-  }
-  else
-  {
-    // printf("7 译码成功\n");
-  }
-  if(dec_ret_9 == 0)
-  {
-    // printf("9 译码失败\n");
-  }
-  else
-  {
-    // printf("9 译码成功\n");
-  }
-
-  // 检查 black_or_gray_e_out 是否覆盖所有错误向量
-  // 将所有位置异或运算，如果包含则重量相减等于异或重量，否则不等于
-  split_e_t res_include   = {0};
-  split_e_t res_include_5 = {0};
-  split_e_t res_include_7 = {0};
-  split_e_t res_include_9 = {0};
-  for(uint8_t i_N0 = 0; i_N0 < N0; i_N0++)
-  {
-    GUARD(gf2x_add((uint8_t *)&res_include.val[i_N0].raw,
-                   black_or_gray_e_out.val[i_N0].raw, R_e.val[i_N0].raw, R_SIZE));
-    GUARD(gf2x_add((uint8_t *)&res_include_5.val[i_N0].raw,
-                   black_or_gray_e_out_5.val[i_N0].raw, R_e.val[i_N0].raw,
-                   R_SIZE));
-    GUARD(gf2x_add((uint8_t *)&res_include_7.val[i_N0].raw,
-                   black_or_gray_e_out_7.val[i_N0].raw, R_e.val[i_N0].raw,
-                   R_SIZE));
-    GUARD(gf2x_add((uint8_t *)&res_include_9.val[i_N0].raw,
-                   black_or_gray_e_out_9.val[i_N0].raw, R_e.val[i_N0].raw,
-                   R_SIZE));
-  }
-  // 异或后的重量
-  uint8_t res_weight = r_bits_vector_weight((r_t *)res_include.val[0].raw) +
-                       r_bits_vector_weight((r_t *)res_include.val[1].raw);
-  uint8_t res_weight_5 = r_bits_vector_weight((r_t *)res_include_5.val[0].raw) +
-                         r_bits_vector_weight((r_t *)res_include_5.val[1].raw);
-  uint8_t res_weight_7 = r_bits_vector_weight((r_t *)res_include_7.val[0].raw) +
-                         r_bits_vector_weight((r_t *)res_include_7.val[1].raw);
-  uint8_t res_weight_9 = r_bits_vector_weight((r_t *)res_include_9.val[0].raw) +
-                         r_bits_vector_weight((r_t *)res_include_9.val[1].raw);
-  // 异或前的重量相减
-  uint8_t reduce_weight =
-      r_bits_vector_weight((r_t *)black_or_gray_e_out.val[0].raw) +
-      r_bits_vector_weight((r_t *)black_or_gray_e_out.val[1].raw) -
-      r_bits_vector_weight((r_t *)R_e.val[0].raw) -
-      r_bits_vector_weight((r_t *)R_e.val[1].raw);
-  uint8_t reduce_weight_5 =
-      r_bits_vector_weight((r_t *)black_or_gray_e_out_5.val[0].raw) +
-      r_bits_vector_weight((r_t *)black_or_gray_e_out_5.val[1].raw) -
-      r_bits_vector_weight((r_t *)R_e.val[0].raw) -
-      r_bits_vector_weight((r_t *)R_e.val[1].raw);
-  uint8_t reduce_weight_7 =
-      r_bits_vector_weight((r_t *)black_or_gray_e_out_7.val[0].raw) +
-      r_bits_vector_weight((r_t *)black_or_gray_e_out_7.val[1].raw) -
-      r_bits_vector_weight((r_t *)R_e.val[0].raw) -
-      r_bits_vector_weight((r_t *)R_e.val[1].raw);
-  uint8_t reduce_weight_9 =
-      r_bits_vector_weight((r_t *)black_or_gray_e_out_9.val[0].raw) +
-      r_bits_vector_weight((r_t *)black_or_gray_e_out_9.val[1].raw) -
-      r_bits_vector_weight((r_t *)R_e.val[0].raw) -
-      r_bits_vector_weight((r_t *)R_e.val[1].raw);
-
-  // 判断是否两者重量相等
+  GUARD(gf2x_and((uint8_t *)&res_include.val[0].raw,
+                 black_or_gray_e_out.val[0].raw, R_e.val[0].raw, R_SIZE));
+  GUARD(gf2x_and((uint8_t *)&res_include.val[1].raw,
+                 black_or_gray_e_out.val[1].raw, R_e.val[1].raw, R_SIZE));
+  uint16_t res_weight = r_bits_vector_weight((r_t *)res_include.val[0].raw) +
+                        r_bits_vector_weight((r_t *)res_include.val[1].raw);
   FILE *fp;
-  fp = fopen("error_vector_include.txt", "a");
-  if(res_weight == reduce_weight)
+  fp = fopen("weight_bad.txt", "a");
+  if(res_weight != e_weight)
   {
-    // fprintf(fp, "3 重量相等, 包含所有错误向量\n");
+    fprintf(fp, "%d 不包含所有错误向量\n", DELTA);
+    flag = 1;
   }
-  else
+  if(flag == 1)
   {
-    fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA);
-  }
-  if(res_weight_5 == reduce_weight_5)
-  {
-    // fprintf(fp, "5 重量相等, 包含所有错误向量\n");
-  }
-  else
-  {
-    fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA_5);
-  }
-  if(res_weight_7 == reduce_weight_7)
-  {
-    // fprintf(fp, "7 重量相等, 包含所有错误向量\n");
-  }
-  else
-  {
-    fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA_7);
-  }
-  if(res_weight_9 == reduce_weight_9)
-  {
-    // fprintf(fp, "9 重量相等, 包含所有错误向量\n");
-  }
-  else
-  {
-    fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n\n", DELTA_9);
+    fprintf(fp, "\n");
   }
   fclose(fp);
+  flag = 0;
+
+  // // 添加对 delta 5 7 9 的测试
+  // uint8_t  flag_5 = 0;
+  // uint32_t dec_ret_5 =
+  //     decode((split_e_t *)&black_or_gray_e_out_5, &e_5, (uint8_t *)&flag_5, &R_e,
+  //            &syndrome_5, l_ct, l_sk, DELTA_5) != SUCCESS
+  //         ? 0
+  //         : 1;
+  // GUARD(gf2x_and((uint8_t *)&res_include_5.val[0].raw,
+  //                black_or_gray_e_out_5.val[0].raw, R_e.val[0].raw, R_SIZE));
+  // GUARD(gf2x_and((uint8_t *)&res_include_5.val[1].raw,
+  //                black_or_gray_e_out_5.val[1].raw, R_e.val[1].raw, R_SIZE));
+  // uint16_t res_weight_5 = r_bits_vector_weight((r_t *)res_include_5.val[0].raw) +
+  //                         r_bits_vector_weight((r_t *)res_include_5.val[1].raw);
+  // FILE *fp_5;
+  // fp_5 = fopen("weight_bad.txt", "a");
+  // if(res_weight_5 != e_weight)
+  // {
+  //   fprintf(fp_5, "%d 不包含所有错误向量\n", DELTA);
+  //   flag_5 = 1;
+  // }
+  // if(flag_5 == 1)
+  // {
+  //   fprintf(fp_5, "\n");
+  // }
+  // fclose(fp_5);
+  // flag_5 = 0;
+
+  // uint8_t  flag_7 = 0;
+  // uint32_t dec_ret_7 =
+  //     decode((split_e_t *)&black_or_gray_e_out_7, &e_7, (uint8_t *)&flag_7, &R_e,
+  //            &syndrome_7, l_ct, l_sk, DELTA_7) != SUCCESS
+  //         ? 0
+  //         : 1;
+  // GUARD(gf2x_and((uint8_t *)&res_include_7.val[0].raw,
+  //                black_or_gray_e_out_7.val[0].raw, R_e.val[0].raw, R_SIZE));
+  // GUARD(gf2x_and((uint8_t *)&res_include_7.val[1].raw,
+  //                black_or_gray_e_out_7.val[1].raw, R_e.val[1].raw, R_SIZE));
+  // uint16_t res_weight_7 = r_bits_vector_weight((r_t *)res_include_7.val[0].raw) +
+  //                         r_bits_vector_weight((r_t *)res_include_7.val[1].raw);
+  // FILE *fp_7;
+  // fp_7 = fopen("weight_bad.txt", "a");
+  // if(res_weight_7 != e_weight)
+  // {
+  //   fprintf(fp_7, "%d 不包含所有错误向量\n", DELTA);
+  //   flag_7 = 1;
+  // }
+  // if(flag_7 == 1)
+  // {
+  //   fprintf(fp_7, "\n");
+  // }
+  // fclose(fp_7);
+  // flag_7 = 0;
+
+  // uint8_t  flag_9 = 0;
+  // uint32_t dec_ret_9 =
+  //     decode((split_e_t *)&black_or_gray_e_out_9, &e_9, (uint8_t *)&flag_9, &R_e,
+  //            &syndrome_9, l_ct, l_sk, DELTA_9) != SUCCESS
+  //         ? 0
+  //         : 1;
+  // GUARD(gf2x_and((uint8_t *)&res_include_9.val[0].raw,
+  //                black_or_gray_e_out_9.val[0].raw, R_e.val[0].raw, R_SIZE));
+  // GUARD(gf2x_and((uint8_t *)&res_include_9.val[1].raw,
+  //                black_or_gray_e_out_9.val[1].raw, R_e.val[1].raw, R_SIZE));
+  // uint16_t res_weight_9 = r_bits_vector_weight((r_t *)res_include_9.val[0].raw) +
+  //                         r_bits_vector_weight((r_t *)res_include_9.val[1].raw);
+  // FILE *fp_9;
+  // fp_9 = fopen("weight_bad.txt", "a");
+  // if(res_weight_9 != e_weight)
+  // {
+  //   fprintf(fp_9, "%d 不包含所有错误向量\n", DELTA);
+  //   flag_9 = 1;
+  // }
+  // if(flag_9 == 1)
+  // {
+  //   fprintf(fp_9, "\n");
+  // }
+  // fclose(fp_9);
+  // flag_9 = 0;
+
+  // if(dec_ret_5 == 0)
+  // {
+  //   // printf("5 译码失败\n");
+  // }
+  // else
+  // {
+  //   // printf("5 译码成功\n");
+  // }
+  // if(dec_ret_7 == 0)
+  // {
+  //   // printf("7 译码失败\n");
+  // }
+  // else
+  // {
+  //   // printf("7 译码成功\n");
+  // }
+  // if(dec_ret_9 == 0)
+  // {
+  //   // printf("9 译码失败\n");
+  // }
+  // else
+  // {
+  //   // printf("9 译码成功\n");
+  // }
+
+  // // ---- test ---- 打印错误向量和黑灰集合
+  // print("kem 的黑灰集合 0: ", (uint64_t *)&black_or_gray_e_out.val[0].raw,
+  // R_BITS); print("kem 的黑灰集合 1: ", (uint64_t
+  // *)&black_or_gray_e_out.val[1].raw, R_BITS); print("kem 的 R_e 0: ", (uint64_t
+  // *)&R_e.val[0].raw, R_BITS); print("kem 的 R_e 1: ", (uint64_t
+  // *)&R_e.val[1].raw, R_BITS);
+
+  // for(uint8_t i_N0 = 0; i_N0 < N0; i_N0++)
+  // {
+  //   GUARD(gf2x_and((uint8_t *)&res_include.val[i_N0].raw,
+  //                  black_or_gray_e_out.val[i_N0].raw, R_e.val[i_N0].raw,
+  //                  R_SIZE));
+  //   GUARD(gf2x_and((uint8_t *)&res_include_5.val[i_N0].raw,
+  //                  black_or_gray_e_out_5.val[i_N0].raw, R_e.val[i_N0].raw,
+  //                  R_SIZE));
+  //   GUARD(gf2x_and((uint8_t *)&res_include_7.val[i_N0].raw,
+  //                  black_or_gray_e_out_7.val[i_N0].raw, R_e.val[i_N0].raw,
+  //                  R_SIZE));
+  //   GUARD(gf2x_and((uint8_t *)&res_include_9.val[i_N0].raw,
+  //                  black_or_gray_e_out_9.val[i_N0].raw, R_e.val[i_N0].raw,
+  //                  R_SIZE));
+  // }
+  // // 与后的重量
+  // uint16_t res_weight = r_bits_vector_weight((r_t *)res_include.val[0].raw) +
+  //                       r_bits_vector_weight((r_t *)res_include.val[1].raw);
+  // uint16_t res_weight_5 = r_bits_vector_weight((r_t *)res_include_5.val[0].raw)
+  // +
+  //                         r_bits_vector_weight((r_t
+  //                         *)res_include_5.val[1].raw);
+  // uint16_t res_weight_7 = r_bits_vector_weight((r_t *)res_include_7.val[0].raw)
+  // +
+  //                         r_bits_vector_weight((r_t
+  //                         *)res_include_7.val[1].raw);
+  // uint16_t res_weight_9 = r_bits_vector_weight((r_t *)res_include_9.val[0].raw)
+  // +
+  //                         r_bits_vector_weight((r_t
+  //                         *)res_include_9.val[1].raw);
+
+  // // 异或前的重量相减
+  // uint8_t reduce_weight =
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out.val[0].raw) +
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out.val[1].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[0].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[1].raw);
+  // uint8_t reduce_weight_5 =
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out_5.val[0].raw) +
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out_5.val[1].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[0].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[1].raw);
+  // uint8_t reduce_weight_7 =
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out_7.val[0].raw) +
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out_7.val[1].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[0].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[1].raw);
+  // uint8_t reduce_weight_9 =
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out_9.val[0].raw) +
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out_9.val[1].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[0].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[1].raw);
+
+  // // 判断是否两者重量相等
+  // FILE *fp;
+  // fp = fopen("error_vector_include.txt", "a");
+  // if(res_weight == e_weight)
+  // {
+  //   // fprintf(fp, "3 重量相等, 包含所有错误向量\n");
+  // }
+  // else
+  // {
+  //   fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA);
+  // }
+  // if(res_weight_5 == e_weight)
+  // {
+  //   // fprintf(fp, "5 重量相等, 包含所有错误向量\n");
+  // }
+  // else
+  // {
+  //   fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA_5);
+  // }
+  // if(res_weight_7 == e_weight)
+  // {
+  //   // fprintf(fp, "7 重量相等, 包含所有错误向量\n");
+  // }
+  // else
+  // {
+  //   fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA_7);
+  // }
+  // if(res_weight_9 == e_weight)
+  // {
+  //   // fprintf(fp, "9 重量相等, 包含所有错误向量\n");
+  // }
+  // else
+  // {
+  //   fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA_9);
+  // }
+  // fclose(fp);
 
   DEFER_CLEANUP(split_e_t e2, split_e_cleanup);
   DEFER_CLEANUP(pad_ct_t ce, pad_ct_cleanup);

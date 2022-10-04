@@ -77,9 +77,9 @@
 #endif
 
 #define EQ_COLUMN 101 // 索引矩阵列数
-#define hang R_BITS
-#define X    EQ_COLUMN - 1
-#define N    2 * R_BITS
+#define hang      R_BITS
+#define X         EQ_COLUMN - 1
+#define N         2 * R_BITS
 
 // // 用于 将一个 8 位数组转换为十进制 存放于 bin_to_uint8_tmp 中
 // void binary_to_uint8_t(uint8_t a[])
@@ -560,6 +560,7 @@ find_err2(OUT split_e_t                  *e,
 ret_t
 decode(OUT split_e_t       *black_or_gray_e_out,
        OUT split_e_t       *e,
+       IN OUT uint8_t      *flag,
        IN const split_e_t  *R_e,
        IN const syndrome_t *original_s,
        IN const ct_t       *ct,
@@ -582,7 +583,8 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   // 定义一个全局变量用于记录 equations 中每一行的非零索引个数
   uint8_t eq_index[R_BITS] = {0};
 
-  // 定义 11779 行方程组, 前 EQ_COLUMN-1 个元素用于保存索引, 第 EQ_COLUMN 个用于存放增广常数
+  // 定义 11779 行方程组, 前 EQ_COLUMN-1 个元素用于保存索引, 第 EQ_COLUMN
+  // 个用于存放增广常数
   uint16_t equations[R_BITS][EQ_COLUMN] = {0};
 
   // Reset (init) the error because it is xored in the find_err funcitons.
@@ -751,6 +753,9 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     print("\nblack_or_gray_e: \n", (uint64_t *)black_or_gray_e.val[i].raw,
           R_BITS);
 
+    // 将 black_or_gray_e 传递出去比较是否包含所有错误向量
+    black_or_gray_e_out->val[i] = black_or_gray_e.val[i];
+
     // ---- test ---- 打印 ct_remove_BG
     print("\nct_remove_BG: \n", (uint64_t *)ct_remove_BG.val[i].raw, R_BITS);
 
@@ -759,8 +764,9 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     {
       // 将当前 h 与 black_or_gray_e 与运算
       // h 的有效位是 [185]-[369]
-      GUARD(and_index(equations[i_eq], (uint8_t *)&eq_index, black_or_gray_e.val[i].raw,
-                      (uint8_t *)&h.val[i].qw[R_QW], R_SIZE, i, i_eq));
+      GUARD(and_index(equations[i_eq], (uint8_t *)&eq_index,
+                      black_or_gray_e.val[i].raw, (uint8_t *)&h.val[i].qw[R_QW],
+                      R_SIZE, i, i_eq));
 
       // // ---- test ----
       // printf("第 %d 次循环----", i_eq);
@@ -840,12 +846,12 @@ decode(OUT split_e_t       *black_or_gray_e_out,
 
   // ---------------- 使用方程求解 ----------------
   // 结果被保存在 b[23558] 中, 0 被保存为 2, 1 被保存为 1
-  int M = x_weight;
-  int             i, j;
+  int      M = x_weight;
+  int      i, j;
   uint16_t b[N] = {0};
-  int             y    = 0;
-  int             t    = 0;
-  int             c    = 0;
+  int      y    = 0;
+  int      t    = 0;
+  int      c    = 0;
   while(t < X)
   {
     for(i = 0; i < hang; i++)
@@ -976,10 +982,11 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   {
     FILE *fp_2;
     fp_2 = fopen("weight_bad.txt", "a");
-    fprintf(fp_2, "当前 delta 解方程失败: %u\n", delat);
+    fprintf(fp_2, "%d 解方程失败\n", delat);
     // fprintf(fp_2, "v_0 重量为: %u\n", verify_weight_0);
     // fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
     fclose(fp_2);
+    *flag = 1;
   }
   // else
   // {
@@ -1016,18 +1023,15 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   {
     FILE *fp_3;
     fp_3 = fopen("weight_bad.txt", "a");
-    fprintf(fp_3, "黑灰译码失败\n\n");
+    fprintf(fp_3, "%d 黑灰译码失败\n", delat);
     fclose(fp_3);
+    *flag = 1;
     DMSG("s 重量不为 0...");
     BIKE_ERROR(E_DECODING_FAILURE);
   }
 
   // // 由于存在全局变量，将 eq_index 重置为 0
   // memset(eq_index, 0, R_BITS);
-
-  // 将 black_or_gray_e 传递出去比较是否包含所有错误向量
-  black_or_gray_e_out->val[0] = black_or_gray_e.val[0];
-  black_or_gray_e_out->val[1] = black_or_gray_e.val[1];
 
   return SUCCESS;
 }
