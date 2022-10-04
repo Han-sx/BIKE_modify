@@ -66,7 +66,7 @@
 #  endif
 #elif defined(BGF_DECODER)
 #  if(LEVEL == 1)
-#    define MAX_IT 5
+#    define MAX_IT 7
 #  elif(LEVEL == 3)
 #    define MAX_IT 6
 #  elif(LEVEL == 5)
