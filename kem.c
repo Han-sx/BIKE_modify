@@ -472,7 +472,7 @@ crypto_kem_dec(OUT unsigned char      *ss,
   fp = fopen("weight_bad.txt", "a");
   if(res_weight != e_weight)
   {
-    fprintf(fp, "%d 不包含所有错误向量\n", DELTA);
+    fprintf(fp, "DELAT: %d 不包含所有错误向量\n", DELTA);
     flag = 1;
   }
   if(flag == 1)
@@ -499,7 +499,7 @@ crypto_kem_dec(OUT unsigned char      *ss,
   fp_5 = fopen("weight_bad.txt", "a");
   if(res_weight_5 != e_weight)
   {
-    fprintf(fp_5, "%d 不包含所有错误向量\n", DELTA_5);
+    fprintf(fp_5, "DELAT: %d 不包含所有错误向量\n", DELTA_5);
     flag_5 = 1;
   }
   if(flag_5 == 1)
@@ -525,7 +525,7 @@ crypto_kem_dec(OUT unsigned char      *ss,
   fp_7 = fopen("weight_bad.txt", "a");
   if(res_weight_7 != e_weight)
   {
-    fprintf(fp_7, "%d 不包含所有错误向量\n", DELTA_7);
+    fprintf(fp_7, "DELAT: %d 不包含所有错误向量\n", DELTA_7);
     flag_7 = 1;
   }
   if(flag_7 == 1)
@@ -551,7 +551,7 @@ crypto_kem_dec(OUT unsigned char      *ss,
   // fp_9 = fopen("weight_bad.txt", "a");
   // if(res_weight_9 != e_weight)
   // {
-  //   fprintf(fp_9, "%d 不包含所有错误向量\n", DELTA_9);
+  //   fprintf(fp_9, "DELAT: %d 不包含所有错误向量\n", DELTA_9);
   //   flag_9 = 1;
   // }
   // if(flag_9 == 1)

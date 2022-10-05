@@ -982,7 +982,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   {
     FILE *fp_2;
     fp_2 = fopen("weight_bad.txt", "a");
-    fprintf(fp_2, "%d 解方程失败\n", delat);
+    fprintf(fp_2, "DELAT: %d 解方程失败\n", delat);
     // fprintf(fp_2, "v_0 重量为: %u\n", verify_weight_0);
     // fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
     fclose(fp_2);
@@ -1023,7 +1023,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   {
     FILE *fp_3;
     fp_3 = fopen("weight_bad.txt", "a");
-    fprintf(fp_3, "%d 黑灰译码失败\n", delat);
+    fprintf(fp_3, "DELAT: %d 黑灰译码失败\n", delat);
     fclose(fp_3);
     *flag = 1;
     DMSG("s 重量不为 0...");
