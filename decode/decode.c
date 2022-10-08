@@ -51,6 +51,7 @@
 #include "gf2x.h"
 #include "sampling.h"
 #include "utilities.h"
+#include <math.h>
 #include <string.h>
 
 // Decoding (bit-flipping) parameter
@@ -66,7 +67,7 @@
 #  endif
 #elif defined(BGF_DECODER)
 #  if(LEVEL == 1)
-#    define MAX_IT 7
+#    define MAX_IT 5
 #  elif(LEVEL == 3)
 #    define MAX_IT 6
 #  elif(LEVEL == 5)
@@ -80,6 +81,101 @@
 #define ROW       R_BITS
 #define X         EQ_COLUMN - 1
 #define N         2 * R_BITS
+
+// 利用论文中的方法计算 th
+_INLINE_ uint8_t
+compute_th_R(IN uint16_t sk_wlist_all_0[][DV],
+             IN uint16_t sk_wlist_all_1[][DV],
+             // IN const split_e_t  *e,
+             IN const uint16_t     T,
+             IN const split_e_t  *R_e,
+             IN const syndrome_t *s)
+{
+  // ---- 1.计算 s 的重量 ----
+  uint16_t s_weight = r_bits_vector_weight((const r_t *)s->qw);
+
+  // ---- 2. 计算 X ----
+  // 根据 H 每一行的索引去找 R_e 中是 1 的位置，计算重量
+  double_t x          = 0;
+  uint16_t tmp_weight = 0;
+  uint16_t L[R_BITS]  = {0};
+  uint8_t  mask_1     = 1;
+
+  for(uint16_t r_R_BIT = 0; r_R_BIT < R_BITS; r_R_BIT++)
+  {
+    for(uint8_t i_DV = 0; i_DV < DV; i_DV++)
+    {
+      // 将索引位置除 8 找 e 对应字节，用 mod 8 找 对应位置
+      if((R_e->val[0].raw[(sk_wlist_all_0[r_R_BIT][i_DV] / 8)] &
+          (mask_1 << (sk_wlist_all_0[r_R_BIT][i_DV] % 8))) != 0)
+      {
+        // 如果与结果不为 0 则重量加 1
+        tmp_weight += 1;
+      }
+      if((R_e->val[1].raw[(sk_wlist_all_1[r_R_BIT][i_DV] / 8)] &
+          (mask_1 << (sk_wlist_all_1[r_R_BIT][i_DV] % 8))) != 0)
+      {
+        // 如果与结果不为 0 则重量加 1
+        tmp_weight += 1;
+      }
+    }
+    // 将当前行的重量作为下标保存到 L 中
+    L[tmp_weight] += 1;
+    // tmp_weight 清 0
+    tmp_weight = 0;
+  }
+
+  // 将 L 中奇数索引进行运算
+  for(uint16_t i_l = 1; i_l < R_BITS; i_l = i_l + 2)
+  {
+    if(L[i_l] == 0)
+    {
+      break;
+    }
+    double_t A = 0;
+    double_t B = 0;
+    double_t C = 0;
+
+    // 奇数运算
+    if(i_l % 2 == 1)
+    {
+      // C(w,l)
+      for(int i_c = 0; i_c < i_l; i_c++)
+      {
+        A += log10((double_t)(2 * DV - i_c) / (i_l - i_c));
+      }
+      // C(n-w,t-l)
+      for(int i_c = 0; i_c < T - i_l; i_c++)
+      {
+        B += log10((double_t)(2 * R_BITS - 2 * DV - i_c) / (T - i_l - i_c));
+      }
+      // C(n,t)
+      for(int i_c = 0; i_c < T; i_c++)
+      {
+        C += log10((double_t)(2 * R_BITS - i_c) / (T - i_c));
+      }
+      // 求当前 x
+      x += (i_l - 1) * R_BITS * pow(10, (A + B - C));
+    }
+  }
+
+  // ---- 3. 计算 T ----
+  double_t pai_0 = (double_t)(2 * DV * s_weight - x) / ((2 * R_BITS - T) * DV);
+  double_t pai_1 = (double_t)(s_weight + x) / (T * DV);
+
+  double_t th = (log10((double_t)(2 * R_BITS - T) / T) +
+                 DV * log10((1 - pai_0) / (1 - pai_1))) /
+                (log10(pai_1 / pai_0) + log10((1 - pai_0) / (1 - pai_1)));
+
+  // ---- test ---- 打印参数
+  // printf("x = %f\n", x);
+  // printf("s_weight = %u\n", s_weight);
+  // printf("pai_0 = %f\n", pai_0);
+  // printf("pai_1 = %f\n", pai_1);
+  // printf("th = %f\n", th);
+  // printf("th_up = %u\n",(uint8_t)th);
+  return (uint8_t)th + 1;
+}
 
 // 利用解出来的 b 和 ct 还原 fm(ct_verify)
 _INLINE_ void
@@ -675,14 +771,15 @@ decode(OUT split_e_t       *black_or_gray_e_out,
        IN const uint8_t     delat)
 {
   // 初始化黑灰数组
-  split_e_t  black_e           = {0};
-  split_e_t  gray_e            = {0};
-  split_e_t  black_or_gray_e   = {0};
-  ct_t       ct_remove_BG      = {0};
-  ct_t       ct_pad            = {0};
-  ct_t       ct_verify         = {0};
-  h_t        h                 = {0};
-  sk_t       sk_transpose      = {0};
+  split_e_t  black_e         = {0};
+  split_e_t  gray_e          = {0};
+  split_e_t  black_or_gray_e = {0};
+  split_e_t  fixed_e         = {0};
+  ct_t       ct_remove_BG    = {0};
+  ct_t       ct_pad          = {0};
+  ct_t       ct_verify       = {0};
+  h_t        h               = {0}; // 此处保存的是 H 转置后的第一行
+  sk_t       sk_transpose    = {0};
   syndrome_t pad_constant_term = {0};
   pad_sk_t   pad_sk_transpose  = {0};
   syndrome_t s;
@@ -694,11 +791,41 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   // 个用于存放增广常数
   uint16_t equations[R_BITS][EQ_COLUMN] = {0};
 
+  // 构建出循环矩阵的索引 h_matrix 方便后面使用
+  uint16_t sk_wlist_all_0[R_BITS][DV] = {0};
+  uint16_t sk_wlist_all_1[R_BITS][DV] = {0};
+
+  // 填充对应的索引值
+  // 填充第一行
+  for(uint16_t i_DV = 0; i_DV < DV; i_DV++)
+  {
+    sk_wlist_all_0[0][i_DV] = sk->wlist[0].val[i_DV];
+    sk_wlist_all_1[0][i_DV] = sk->wlist[1].val[i_DV];
+  }
+
+  // 填充后 2 - 11779 行
+  for(uint16_t i_r = 1; i_r < R_BITS; i_r++)
+  {
+    for(uint16_t i_DV = 0; i_DV < DV; i_DV++)
+    {
+      sk_wlist_all_0[i_r][i_DV] = (sk_wlist_all_0[i_r - 1][i_DV] + 1) % R_BITS;
+      sk_wlist_all_1[i_r][i_DV] = (sk_wlist_all_1[i_r - 1][i_DV] + 1) % R_BITS;
+    }
+  }
+
+  // 初始化 fixed_e 为 R_e
+  fixed_e.val[0] = R_e->val[0];
+  fixed_e.val[1] = R_e->val[1];
+
   // Reset (init) the error because it is xored in the find_err funcitons.
   // 初始化 e
   memset(e, 0, sizeof(*e));
   s = *original_s;
   dup(&s);
+
+  // // ---- test ----
+  // uint8_t test_res = compute_th_R(sk_wlist_all_0, sk_wlist_all_1, R_e, &s);
+  // printf("test_res = %u\n", test_res);
 
   // -- test --
   // for(uint16_t i_test_s = 0; i_test_s < 555; i_test_s++)
@@ -709,6 +836,12 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   // 进入大迭代过程(for itr in 1...XBG do:)
   for(uint32_t iter = 0; iter < MAX_IT; iter++)
   {
+    // 将 fixed_e 和 求出来的 e 异或
+    GUARD(gf2x_add((uint8_t *)&fixed_e.val[0].raw, R_e->val[0].raw, e->val[0].raw,
+                   R_SIZE));
+    GUARD(gf2x_add((uint8_t *)&fixed_e.val[1].raw, R_e->val[1].raw, e->val[1].raw,
+                   R_SIZE));
+
     // 解码器使用阈值(th)来决定某个位是否为错误位
     // 该位确是错误位的概率随着间隙(upc[i] - th)的增加而增加
     // 该算法记录黑/灰掩码中有小间隙的位，以便后续步骤II和步骤III可以使用掩码，以获得翻转位的更多信息
@@ -716,7 +849,17 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     // 参: Bit Flipping Key Encapsulation(v2.1) 17页，Threshold Selection Rule
     // printf("\n---->当前迭代阶段: %d<----\n", iter);
 
-    const uint8_t threshold = get_threshold(&s);
+    // 获取当前 fixed_e 的重量
+    uint16_t fixed_e_weight = r_bits_vector_weight(&fixed_e.val[0]) + r_bits_vector_weight(&fixed_e.val[1]);
+
+    // const uint8_t threshold = get_threshold(&s);
+    // ---- test ---- 使用论文方法计算的 th
+    const uint8_t threshold =
+        compute_th_R(sk_wlist_all_0, sk_wlist_all_1, fixed_e_weight, &fixed_e, &s);
+
+    // ---- test ---- 查看 th
+    printf("threshold = %u\n", threshold);
+    // printf("MY_threshold = %u\n\n", threshold_2);
 
     DMSG("    Iteration: %d\n", iter);
     DMSG("    Weight of e: %lu\n",
@@ -987,6 +1130,8 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   // GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, ct_test[1].val.raw,
   //                R_SIZE));
   // print("测试结果：", (uint64_t *)&ct_test[0].val, R_BITS);
+
+  printf("\n");
 
   //  26: if (wt(s) != 0) then
   //  27:     return ⊥(ERROR)

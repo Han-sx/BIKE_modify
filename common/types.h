@@ -26,7 +26,8 @@
 
 typedef struct uint128_s
 {
-  union {
+  union
+  {
     uint8_t  bytes[16];
     uint32_t dw[4];
     uint64_t qw[2];
@@ -46,7 +47,7 @@ typedef struct seeds_s
   seed_t seed[NUM_OF_SEEDS];
 } seeds_t;
 
-//raw[R_SIZE] = raw[1473] 1473
+// raw[R_SIZE] = raw[1473] 1473
 typedef struct r_s
 {
   uint8_t raw[R_SIZE];
@@ -91,7 +92,7 @@ typedef struct compressed_idx_t_t
 typedef struct sk_s
 {
   r_t                    bin[N0]; // bin 每个元素为 1473 int8_t 数组
-  compressed_idx_dv_ar_t wlist;   // 密钥汉明重位置 wlist[ val[71], val[71] ]
+  compressed_idx_dv_ar_t wlist; // 密钥汉明重位置 wlist[ val[71], val[71] ]
   r_t                    sigma0;
   r_t                    sigma1;
 } sk_t;
@@ -106,7 +107,7 @@ typedef ALIGN(8) struct padded_e_s
 // Pad r to the next Block
 typedef ALIGN(8) struct padded_r_s
 {
-  r_t     val; // raw[1473]
+  r_t     val;                         // raw[1473]
   uint8_t pad[R_PADDED_SIZE - R_SIZE]; // pad[575]
 } padded_r_t;
 
@@ -150,7 +151,7 @@ typedef struct dup_c_s
   syndrome_t val[N0];
 } dup_c_t;
 
-// 为了对每行 H0 和 H1 旋转，我们类似复制一次 h 
+// 为了对每行 H0 和 H1 旋转，我们类似复制一次 h
 typedef ALIGN(64) struct single_h_s
 {
   uint64_t qw[2 * R_QW];
@@ -178,7 +179,8 @@ typedef struct h_s
 
 typedef struct upc_slice_s
 {
-  union {
+  union
+  {
     padded_r_t r;
     uint64_t   qw[sizeof(padded_r_t) / 8];
   } u;
@@ -186,7 +188,7 @@ typedef struct upc_slice_s
 
 typedef struct upc_s
 {
-  upc_slice_t slice[SLICES]; //SLICES=8
+  upc_slice_t slice[SLICES]; // SLICES=8
 } upc_t;
 
 #pragma pack(pop)

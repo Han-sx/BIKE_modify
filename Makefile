@@ -34,7 +34,7 @@ SRC_FOR_TIDY += gf2x/*.c
 SRC_FOR_TIDY += common/*.c
 
 all: $(BIN_DIR) $(OBJ_DIR) $(SUB_DIRS)
-	$(CC) $(OBJS) $(CFLAGS) $(EXTERNAL_LIBS) -o $(TARGET)
+	$(CC) $(OBJS) $(CFLAGS) $(EXTERNAL_LIBS) -o $(TARGET) -lm
 
 $(SUB_DIRS):
 	make -C $@
