@@ -27,9 +27,7 @@ compute_syndrome(OUT syndrome_t *syndrome, IN const ct_t *ct, IN const sk_t *sk)
 
 // e should be zeroed before calling the decoder.
 ret_t
-decode(OUT split_e_t       *black_or_gray_e_out,
-       OUT split_e_t       *e,
-       IN OUT uint8_t      *flag,
+decode(OUT split_e_t       *e,
        IN const split_e_t  *R_e,
        IN const syndrome_t *s,
        IN const ct_t       *ct,
