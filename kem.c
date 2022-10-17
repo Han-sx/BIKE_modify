@@ -423,8 +423,8 @@ crypto_kem_dec(OUT unsigned char      *ss,
   DEFER_CLEANUP(syndrome_t syndrome = {0}, syndrome_cleanup);
   DEFER_CLEANUP(split_e_t e, split_e_cleanup);
   // 添加对 5 7 9 测试
-  DEFER_CLEANUP(syndrome_t syndrome_5 = {0}, syndrome_cleanup);
-  DEFER_CLEANUP(split_e_t e_5, split_e_cleanup);
+  // DEFER_CLEANUP(syndrome_t syndrome_5 = {0}, syndrome_cleanup);
+  // DEFER_CLEANUP(split_e_t e_5, split_e_cleanup);
   // DEFER_CLEANUP(syndrome_t syndrome_7 = {0}, syndrome_cleanup);
   // DEFER_CLEANUP(split_e_t e_7, split_e_cleanup);
   // DEFER_CLEANUP(syndrome_t syndrome_9 = {0}, syndrome_cleanup);
@@ -435,7 +435,7 @@ crypto_kem_dec(OUT unsigned char      *ss,
   // 计算初始校验子 s
   GUARD(compute_syndrome(&syndrome, l_ct, l_sk));
   // 添加对 5 7 9 测试
-  GUARD(compute_syndrome(&syndrome_5, l_ct, l_sk));
+  // GUARD(compute_syndrome(&syndrome_5, l_ct, l_sk));
   // GUARD(compute_syndrome(&syndrome_7, l_ct, l_sk));
   // GUARD(compute_syndrome(&syndrome_9, l_ct, l_sk));
 
@@ -481,8 +481,8 @@ crypto_kem_dec(OUT unsigned char      *ss,
 
   // 添加对 delta 5 的测试
   // uint8_t  flag_5 = 0;
-  uint32_t dec_ret_5 =
-      decode(&e_5, &R_e, &syndrome_5, l_ct, l_sk, DELTA_5) != SUCCESS ? 0 : 1;
+  // uint32_t dec_ret_5 =
+  //     decode(&e_5, &R_e, &syndrome_5, l_ct, l_sk, DELTA_5) != SUCCESS ? 0 : 1;
   // GUARD(gf2x_and((uint8_t *)&res_include_5.val[0].raw,
   //                black_or_gray_e_out_5.val[0].raw, R_e.val[0].raw, R_SIZE));
   // GUARD(gf2x_and((uint8_t *)&res_include_5.val[1].raw,
@@ -563,14 +563,14 @@ crypto_kem_dec(OUT unsigned char      *ss,
   // fclose(fp_9);
   // flag_9 = 0;
 
-  if(dec_ret_5 == 0)
-  {
-    // printf("5 译码失败\n");
-  }
-  else
-  {
-    // printf("5 译码成功\n");
-  }
+  // if(dec_ret_5 == 0)
+  // {
+  //   // printf("5 译码失败\n");
+  // }
+  // else
+  // {
+  //   // printf("5 译码成功\n");
+  // }
   // if(dec_ret_7 == 0)
   // {
   //   // printf("7 译码失败\n");

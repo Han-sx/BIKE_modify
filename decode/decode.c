@@ -77,10 +77,57 @@
 #  endif
 #endif
 
+// 0 使用代码原始线性拟合计算, 1 使用论文方法计算
+#define TH_SELECT 1
+
 #define EQ_COLUMN 101 // 索引矩阵列数
 #define ROW       R_BITS
 #define X         EQ_COLUMN - 1
 #define N         2 * R_BITS
+
+// 用于计算出upc切片的值并保存在文件中
+_INLINE_ void
+compute_upc_and_save(IN upc_t upc)
+{
+  // ---- test ---- 将 upc 切片的值计算出来并保存
+  // 处理前 184 位
+  // 将每层累计得到的 upc_i 写入文件
+  FILE *fp_2;
+  fp_2 = fopen("iter_data.txt", "a");
+  for(uint16_t i_upc = 0; i_upc < R_QW - 1; i_upc++)
+  {
+    for(uint64_t location = 1; location != 0; location <<= 1)
+    {
+      // 用于保存每个upc[i]的值
+      uint16_t upc_i = 0;
+      for(uint8_t location_s = 1, i_upc_s = 0; i_upc_s < SLICES - 1;
+          i_upc_s++, location_s <<= 1)
+      {
+        if((upc.slice[i_upc_s].u.qw[i_upc] & location) != 0)
+        {
+          upc_i += location_s;
+        }
+      }
+      fprintf(fp_2, "%u ", upc_i);
+    }
+  }
+  // 处理最后 3 位
+  for(uint64_t location = 1; location < 8; location <<= 1)
+  {
+    // 用于保存每个upc[i]的值
+    uint16_t upc_i = 0;
+    for(uint8_t location_s = 1, i_upc_s = 0; i_upc_s < SLICES - 1;
+        i_upc_s++, location_s <<= 1)
+    {
+      if((upc.slice[i_upc_s].u.qw[R_QW - 1] & location) != 0)
+      {
+        upc_i += location_s;
+      }
+    }
+    fprintf(fp_2, "%u ", upc_i);
+  }
+  fclose(fp_2);
+}
 
 // 利用论文中的方法计算 th
 _INLINE_ double_t
@@ -661,6 +708,9 @@ find_err1(OUT split_e_t                  *e,
       bit_sliced_adder(&upc, &rotated_syndrome, LOG2_MSB(j + 1));
     }
 
+    // ---- test ---- 将 upc 切片的值计算出来并保存
+    compute_upc_and_save(upc);
+
     // 2) Subtract the threshold from the UPC counters
     // 从 UPC 计数器中减去阈值
     bit_slice_full_subtract(&upc, threshold);
@@ -817,9 +867,20 @@ decode(OUT split_e_t       *e,
   //   printf("第 %u 个 syndrome->qw 的值为: %lu\n", i_test_s, s.qw[i_test_s]);
   // }
 
-  // 用于保存 th
-  double_t th_array[MAX_IT] = {0};
-  uint16_t s_array[MAX_IT]  = {0};
+  // // 用于保存 th
+  // double_t th_array[MAX_IT] = {0};
+  // uint16_t s_array[MAX_IT]  = {0};
+
+  // 记录R_e0
+  fprintf_LE((const uint64_t *)R_e->val[0].raw, R_BITS);
+  // 记录R_e1
+  fprintf_LE((const uint64_t *)R_e->val[1].raw, R_BITS);
+
+  // 断行
+  FILE *fp_2;
+  fp_2 = fopen("iter_data.txt", "a");
+  fprintf(fp_2, "\n");
+  fclose(fp_2);
 
   // 进入大迭代过程(for itr in 1...XBG do:)
   for(uint32_t iter = 0; iter < MAX_IT; iter++)
@@ -841,24 +902,32 @@ decode(OUT split_e_t       *e,
     uint16_t fixed_e_weight = r_bits_vector_weight(&fixed_e.val[0]) +
                               r_bits_vector_weight(&fixed_e.val[1]);
 
-    // 获取当前 s 的重量
-    uint16_t s_weight = r_bits_vector_weight((const r_t *)s.qw);
-
-    // const uint8_t threshold = get_threshold(&s);
     // ---- test ---- 使用论文方法计算的 th
     const double_t threshold_2 = compute_th_R(sk_wlist_all_0, sk_wlist_all_1,
                                               fixed_e_weight, &fixed_e, &s);
 
-    // 保存 th 和 s
-    th_array[iter] = threshold_2;
-    s_array[iter]  = s_weight;
+    // 获取当前 s 的重量
+    uint16_t s_weight = r_bits_vector_weight((const r_t *)s.qw);
 
-    // 把 th 向上取整
-    uint8_t threshold = (uint8_t)threshold_2 + 1;
+    // 判断使用哪种方式计算 th
+    uint8_t threshold = 0;
+    FILE   *fp_1;
+    fp_1 = fopen("iter_data.txt", "a");
+    fprintf(fp_1, "%u ", s_weight);
+    if(TH_SELECT == 0)
+    {
+      // 原线性拟合方法计算 th
+      threshold = get_threshold(&s);
+      fprintf(fp_1, "%u ", threshold);
+    }
+    else
+    {
+      // 论文方法计算 th, 把 th 向上取整
+      threshold = (uint8_t)threshold_2 + 1;
+      fprintf(fp_1, "%f ", threshold_2);
+    }
+    fclose(fp_1);
 
-    // ---- test ---- 查看 th
-    // printf("threshold = %u\n", threshold);
-    // printf("MY_threshold = %u\n\n", threshold_2);
 
     DMSG("    Iteration: %d\n", iter);
     DMSG("    Weight of e: %lu\n",
@@ -869,6 +938,19 @@ decode(OUT split_e_t       *e,
     // H -- sk->wlist
     // 进入 procedure BitFlipIter(s, e, th, H)
     find_err1(e, &black_e, &gray_e, &s, sk->wlist, threshold, delat);
+
+    // 记录当前的 e0
+    fprintf_LE((uint64_t *)e->val[0].raw, R_BITS);
+    // 记录当前的 e1
+    fprintf_LE((uint64_t *)e->val[1].raw, R_BITS);
+    // 记录当前的 black_e0
+    fprintf_LE((uint64_t *)black_e.val[0].raw, R_BITS);
+    // 记录当前的 black_e1
+    fprintf_LE((uint64_t *)black_e.val[1].raw, R_BITS);
+    // 记录当前的 gray_e0
+    fprintf_LE((uint64_t *)gray_e.val[0].raw, R_BITS);
+    // 记录当前的 gray_e1
+    fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
 
     // 10:  s = H(cT + eT ) . 更新校验子 syndrome
     GUARD(recompute_syndrome(&s, ct, sk, e));
@@ -1107,29 +1189,29 @@ decode(OUT split_e_t       *e,
 
   // printf("\n");
 
-  FILE *fp;
-  if(delat == 3)
-  {
-    fp = fopen("DELAT_3_th_s.txt", "a");
-    for(uint8_t i = 0; i < MAX_IT; i++)
-    {
-      fprintf(fp, "%f ", th_array[i]);
-      fprintf(fp, "%d\n", s_array[i]);
-    }
-    fprintf(fp, "\n");
-  }
-  else
-  {
-    fp = fopen("DELAT_4_th_s.txt", "a");
-    for(uint8_t i = 0; i < MAX_IT; i++)
-    {
+  // FILE *fp;
+  // if(delat == 3)
+  // {
+  //   fp = fopen("DELAT_3_th_s.txt", "a");
+  //   for(uint8_t i = 0; i < MAX_IT; i++)
+  //   {
+  //     fprintf(fp, "%f ", th_array[i]);
+  //     fprintf(fp, "%d\n", s_array[i]);
+  //   }
+  //   fprintf(fp, "\n");
+  // }
+  // else
+  // {
+  //   fp = fopen("DELAT_4_th_s.txt", "a");
+  //   for(uint8_t i = 0; i < MAX_IT; i++)
+  //   {
 
-      fprintf(fp, "%f ", th_array[i]);
-      fprintf(fp, "%d\n", s_array[i]);
-    }
-    fprintf(fp, "\n");
-  }
-  fclose(fp);
+  //     fprintf(fp, "%f ", th_array[i]);
+  //     fprintf(fp, "%d\n", s_array[i]);
+  //   }
+  //   fprintf(fp, "\n");
+  // }
+  // fclose(fp);
 
   //  26: if (wt(s) != 0) then
   //  27:     return ⊥(ERROR)
@@ -1143,6 +1225,9 @@ decode(OUT split_e_t       *e,
     DMSG("s 重量不为 0...");
     BIKE_ERROR(E_DECODING_FAILURE);
   }
+
+  // // ---- test ---- fprintf_LE 测试
+  // fprintf_LE((const uint64_t *)R_e, R_BITS);
 
   // // 由于存在全局变量，将 eq_index 重置为 0
   // memset(eq_index, 0, R_BITS);
