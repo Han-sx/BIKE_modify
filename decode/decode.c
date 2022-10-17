@@ -87,7 +87,7 @@ _INLINE_ double_t
 compute_th_R(IN uint16_t sk_wlist_all_0[][DV],
              IN uint16_t sk_wlist_all_1[][DV],
              // IN const split_e_t  *e,
-             IN const uint16_t     T,
+             IN const uint16_t    T,
              IN const split_e_t  *R_e,
              IN const syndrome_t *s)
 {
@@ -462,23 +462,24 @@ dup(IN OUT syndrome_t *s)
 // |-----------------------------|
 // 进入的 h 当从 185 位开始存放 (h0--h11779)，前 0-184 应为 0
 // 此处减少一次复制，并为循环右移做准备
-_INLINE_ void
-dup_two(IN OUT single_h_t *h)
-{
-  // R_QW = 185
-  // qw[369] = (0,0,...,h11778,h11777,h11776)
-  // qw[185] = (h63,h62,...,h1,h0)
-  // qw[184] = (h11778,h11777,...,h11716,h11715)
-  h->qw[0] = (h->qw[185] << LAST_R_QW_TRAIL) | (h->qw[369] << LAST_R_QW_TRAIL_2) |
-             (h->qw[368] >> LAST_R_QW_LEAD_2);
-  // qw[0] = (h2,h1,h0,h11778,...,h11718)
+// _INLINE_ void
+// dup_two(IN OUT single_h_t *h)
+// {
+//   // R_QW = 185
+//   // qw[369] = (0,0,...,h11778,h11777,h11776)
+//   // qw[185] = (h63,h62,...,h1,h0)
+//   // qw[184] = (h11778,h11777,...,h11716,h11715)
+//   h->qw[0] = (h->qw[185] << LAST_R_QW_TRAIL) | (h->qw[369] <<
+//   LAST_R_QW_TRAIL_2) |
+//              (h->qw[368] >> LAST_R_QW_LEAD_2);
+//   // qw[0] = (h2,h1,h0,h11778,...,h11718)
 
-  for(size_t i = 184; i > 0; i--)
-  {
-    h->qw[i] = (h->qw[R_QW + i] << LAST_R_QW_TRAIL) |
-               (h->qw[R_QW + i - 1] >> LAST_R_QW_LEAD);
-  }
-}
+//   for(size_t i = 184; i > 0; i--)
+//   {
+//     h->qw[i] = (h->qw[R_QW + i] << LAST_R_QW_TRAIL) |
+//                (h->qw[R_QW + i - 1] >> LAST_R_QW_LEAD);
+//   }
+// }
 
 ret_t
 compute_syndrome(OUT syndrome_t *syndrome, IN const ct_t *ct, IN const sk_t *sk)
@@ -769,9 +770,9 @@ decode(OUT split_e_t       *e,
        IN const uint8_t     delat)
 {
   // 初始化黑灰数组
-  split_e_t  black_e         = {0};
-  split_e_t  gray_e          = {0};
-  split_e_t  fixed_e         = {0};
+  split_e_t  black_e = {0};
+  split_e_t  gray_e  = {0};
+  split_e_t  fixed_e = {0};
   syndrome_t s;
 
   // 构建出循环矩阵的索引 h_matrix 方便后面使用
@@ -816,6 +817,10 @@ decode(OUT split_e_t       *e,
   //   printf("第 %u 个 syndrome->qw 的值为: %lu\n", i_test_s, s.qw[i_test_s]);
   // }
 
+  // 用于保存 th
+  double_t th_array[MAX_IT] = {0};
+  uint16_t s_array[MAX_IT]  = {0};
+
   // 进入大迭代过程(for itr in 1...XBG do:)
   for(uint32_t iter = 0; iter < MAX_IT; iter++)
   {
@@ -833,27 +838,20 @@ decode(OUT split_e_t       *e,
     // printf("\n---->当前迭代阶段: %d<----\n", iter);
 
     // 获取当前 fixed_e 的重量
-    uint16_t fixed_e_weight = r_bits_vector_weight(&fixed_e.val[0]) + r_bits_vector_weight(&fixed_e.val[1]);
+    uint16_t fixed_e_weight = r_bits_vector_weight(&fixed_e.val[0]) +
+                              r_bits_vector_weight(&fixed_e.val[1]);
 
     // 获取当前 s 的重量
     uint16_t s_weight = r_bits_vector_weight((const r_t *)s.qw);
 
     // const uint8_t threshold = get_threshold(&s);
     // ---- test ---- 使用论文方法计算的 th
-    const double_t threshold_2 =
-        compute_th_R(sk_wlist_all_0, sk_wlist_all_1, fixed_e_weight, &fixed_e, &s);
-    
-    FILE *fp;
-    if(delat == 3){
-      fp = fopen("DELAT_3_th_s.txt", "a");
-      fprintf(fp, "th %f\n", threshold_2);
-      fprintf(fp, "s %d\n", s_weight);
-    }else{
-      fp = fopen("DELAT_4_th_s.txt", "a");
-      fprintf(fp, "th %f\n", threshold_2);
-      fprintf(fp, "s %d\n", s_weight);      
-    }
-    fclose(fp);
+    const double_t threshold_2 = compute_th_R(sk_wlist_all_0, sk_wlist_all_1,
+                                              fixed_e_weight, &fixed_e, &s);
+
+    // 保存 th 和 s
+    th_array[iter] = threshold_2;
+    s_array[iter]  = s_weight;
 
     // 把 th 向上取整
     uint8_t threshold = (uint8_t)threshold_2 + 1;
@@ -938,7 +936,8 @@ decode(OUT split_e_t       *e,
   //   // }
 
   //   // 利用 secure_set_bits() 函数将填充索引位置置为 1
-  //   secure_set_bits((uint64_t *)&pad_sk_transpose[i], sk_transpose.wlist[i].val,
+  //   secure_set_bits((uint64_t *)&pad_sk_transpose[i],
+  //   sk_transpose.wlist[i].val,
   //                   sizeof(pad_sk_transpose[i]), DV);
 
   //   sk_transpose.bin[i] = pad_sk_transpose[i].val;
@@ -989,8 +988,8 @@ decode(OUT split_e_t       *e,
   //     // 将当前 h 与 black_or_gray_e 与运算
   //     // h 的有效位是 [185]-[369]
   //     GUARD(and_index(equations[i_eq], (uint8_t *)&eq_index,
-  //                     black_or_gray_e.val[i].raw, (uint8_t *)&h.val[i].qw[R_QW],
-  //                     R_SIZE, i, i_eq));
+  //                     black_or_gray_e.val[i].raw, (uint8_t
+  //                     *)&h.val[i].qw[R_QW], R_SIZE, i, i_eq));
 
   //     // // ---- test ----
   //     // printf("第 %d 次循环----", i_eq);
@@ -1099,13 +1098,36 @@ decode(OUT split_e_t       *e,
   // // e->val[1].raw, R_SIZE)); GUARD(gf2x_mod_mul((uint64_t *)&ct_test[0].val,
   // // (uint64_t *)&ct_test[0].val,
   // //                    (uint64_t *)&sk_test[0].val));
-  // // GUARD(gf2x_mod_mul((uint64_t *)&ct_test[1].val, (uint64_t *)&ct_test[1].val,
+  // // GUARD(gf2x_mod_mul((uint64_t *)&ct_test[1].val, (uint64_t
+  // *)&ct_test[1].val,
   // //                    (uint64_t *)&sk_test[1].val));
   // // GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, ct_test[1].val.raw,
   // //                R_SIZE));
   // // print("测试结果：", (uint64_t *)&ct_test[0].val, R_BITS);
 
   // printf("\n");
+
+  FILE *fp;
+  if(delat == 3)
+  {
+    fp = fopen("DELAT_3_th_s.txt", "a");
+    for(uint8_t i = 0; i < MAX_IT; i++)
+    {
+      fprintf(fp, "%f ", th_array[i]);
+      fprintf(fp, "%d\n", s_array[i]);
+    }
+  }
+  else
+  {
+    fp = fopen("DELAT_4_th_s.txt", "a");
+    for(uint8_t i = 0; i < MAX_IT; i++)
+    {
+
+      fprintf(fp, "%f ", th_array[i]);
+      fprintf(fp, "%d\n", s_array[i]);
+    }
+  }
+  fclose(fp);
 
   //  26: if (wt(s) != 0) then
   //  27:     return ⊥(ERROR)

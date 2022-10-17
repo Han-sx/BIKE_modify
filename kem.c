@@ -588,16 +588,16 @@ crypto_kem_dec(OUT unsigned char      *ss,
   //   // printf("9 译码成功\n");
   // }
 
-  // 加入换行
-  FILE *fp_t1;
-  fp_t1 = fopen("DELAT_3_th_s.txt", "a");
-  fprintf(fp_t1, "\n");
-  fclose(fp_t1);
+  // // 加入换行
+  // FILE *fp_t1;
+  // fp_t1 = fopen("DELAT_3_th_s.txt", "a");
+  // fprintf(fp_t1, "\n");
+  // fclose(fp_t1);
 
-  FILE *fp_t2;
-  fp_t2 = fopen("DELAT_4_th_s.txt", "a");
-  fprintf(fp_t2, "\n");
-  fclose(fp_t2);
+  // FILE *fp_t2;
+  // fp_t2 = fopen("DELAT_4_th_s.txt", "a");
+  // fprintf(fp_t2, "\n");
+  // fclose(fp_t2);
 
   DEFER_CLEANUP(split_e_t e2, split_e_cleanup);
   DEFER_CLEANUP(pad_ct_t ce, pad_ct_cleanup);
