@@ -54,7 +54,7 @@
 #  define BLOCK_SIZE       32768
 #elif(LEVEL == 1)
 // 64-bits of post-quantum security parameters (BIKE paper):
-#  define R_BITS 11779
+#  define R_BITS 9857 //11779
 #  define DV     71
 #  define T1     134
 

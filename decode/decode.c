@@ -1116,6 +1116,7 @@ decode(OUT split_e_t       *e,
       fprintf(fp, "%f ", th_array[i]);
       fprintf(fp, "%d\n", s_array[i]);
     }
+    fprintf(fp, "\n");
   }
   else
   {
@@ -1126,6 +1127,7 @@ decode(OUT split_e_t       *e,
       fprintf(fp, "%f ", th_array[i]);
       fprintf(fp, "%d\n", s_array[i]);
     }
+    fprintf(fp, "\n");
   }
   fclose(fp);
 
