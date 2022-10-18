@@ -786,6 +786,9 @@ find_err2(OUT split_e_t                  *e,
       bit_sliced_adder(&upc, &rotated_syndrome, LOG2_MSB(j + 1));
     }
 
+    // 保存 upc
+    compute_upc_and_save(upc);
+
     // 2) Subtract the threshold from the UPC counters
     // 从 UPC 计数器中减去阈值
     bit_slice_full_subtract(&upc, threshold);
@@ -928,7 +931,6 @@ decode(OUT split_e_t       *e,
     }
     fclose(fp_1);
 
-
     DMSG("    Iteration: %d\n", iter);
     DMSG("    Weight of e: %lu\n",
          r_bits_vector_weight(&e->val[0]) + r_bits_vector_weight(&e->val[1]));
@@ -952,6 +954,12 @@ decode(OUT split_e_t       *e,
     // 记录当前的 gray_e1
     fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
 
+    // 断行
+    FILE *fp_3;
+    fp_3 = fopen("iter_data.txt", "a");
+    fprintf(fp_3, "\n");
+    fclose(fp_3);
+
     // 10:  s = H(cT + eT ) . 更新校验子 syndrome
     GUARD(recompute_syndrome(&s, ct, sk, e));
 
@@ -967,6 +975,15 @@ decode(OUT split_e_t       *e,
          r_bits_vector_weight(&e->val[0]) + r_bits_vector_weight(&e->val[1]));
     DMSG("    Weight of syndrome: %lu\n", r_bits_vector_weight((r_t *)s.qw));
 
+    // 记录 s 和 th
+    // 获取当前 s 的重量
+    uint16_t s_weight_2 = r_bits_vector_weight((const r_t *)s.qw);
+    FILE *fp_4;
+    fp_4 = fopen("iter_data.txt", "a");
+    fprintf(fp_4, "%u ", s_weight_2);
+    fprintf(fp_4, "%u ", ((DV + 1) / 2) + 1);
+    fclose(fp_4);
+
     // 24:  (s, e) = BitFlipMaskedIter(s, e, black, ((d + 1)/2), H) . Step II
     // procedure BitFlipMaskedIter(s, e, mask, th, H)
     find_err2(e, &black_e, &s, sk->wlist, ((DV + 1) / 2) + 1);
@@ -976,9 +993,56 @@ decode(OUT split_e_t       *e,
          r_bits_vector_weight(&e->val[0]) + r_bits_vector_weight(&e->val[1]));
     DMSG("    Weight of syndrome: %lu\n", r_bits_vector_weight((r_t *)s.qw));
 
+    // 记录当前的 e0
+    fprintf_LE((uint64_t *)e->val[0].raw, R_BITS);
+    // 记录当前的 e1
+    fprintf_LE((uint64_t *)e->val[1].raw, R_BITS);
+    // 记录当前的 black_e0
+    fprintf_LE((uint64_t *)black_e.val[0].raw, R_BITS);
+    // 记录当前的 black_e1
+    fprintf_LE((uint64_t *)black_e.val[1].raw, R_BITS);
+    // 记录当前的 gray_e0
+    fprintf_LE((uint64_t *)gray_e.val[0].raw, R_BITS);
+    // 记录当前的 gray_e1
+    fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
+
+    // 断行
+    FILE *fp_5;
+    fp_5 = fopen("iter_data.txt", "a");
+    fprintf(fp_5, "\n");
+    fclose(fp_5);
+
+    // 记录 s 和 th
+    // 获取当前 s 的重量
+    uint16_t s_weight_3 = r_bits_vector_weight((const r_t *)s.qw);
+    FILE *fp_6;
+    fp_6 = fopen("iter_data.txt", "a");
+    fprintf(fp_6, "%u ", s_weight_3);
+    fprintf(fp_6, "%u ", ((DV + 1) / 2) + 1);
+    fclose(fp_6);
+
     // 25:  (s, e) = BitFlipMaskedIter(s, e, gray, ((d + 1)/2), H) . Step III
     // procedure BitFlipMaskedIter(s, e, mask, th, H)
     find_err2(e, &gray_e, &s, sk->wlist, ((DV + 1) / 2) + 1);
+
+    // 记录当前的 e0
+    fprintf_LE((uint64_t *)e->val[0].raw, R_BITS);
+    // 记录当前的 e1
+    fprintf_LE((uint64_t *)e->val[1].raw, R_BITS);
+    // 记录当前的 black_e0
+    fprintf_LE((uint64_t *)black_e.val[0].raw, R_BITS);
+    // 记录当前的 black_e1
+    fprintf_LE((uint64_t *)black_e.val[1].raw, R_BITS);
+    // 记录当前的 gray_e0
+    fprintf_LE((uint64_t *)gray_e.val[0].raw, R_BITS);
+    // 记录当前的 gray_e1
+    fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
+
+    // 断行
+    FILE *fp_7;
+    fp_7 = fopen("iter_data.txt", "a");
+    fprintf(fp_7, "\n");
+    fclose(fp_7);
 
     GUARD(recompute_syndrome(&s, ct, sk, e));
   }
