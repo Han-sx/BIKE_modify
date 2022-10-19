@@ -54,9 +54,9 @@
 #  define BLOCK_SIZE       32768
 #elif(LEVEL == 1)
 // 64-bits of post-quantum security parameters (BIKE paper):
-#  define R_BITS 9857 //11779
+#  define R_BITS 11779
 #  define DV     71
-#  define T1     134
+#  define T1     154
 
 #  define THRESHOLD_COEFF0 13.530
 #  define THRESHOLD_COEFF1 0.0069721
@@ -125,9 +125,10 @@ bike_static_assert((N_BITS % ALL_YMM_SIZE != 0), nbits_512_err);
 ////////////////////////////////
 // Parameters for the BG decoder.
 ////////////////////////////////
+// 暂时仅使用 DELTA
 #define BGF_DECODER
 #define DELTA  3
-#define DELTA_5 4
-#define DELTA_7 5
+#define DELTA_5 5
+#define DELTA_7 7
 #define DELTA_9 9
 #define SLICES (LOG2_MSB(DV) + 1)

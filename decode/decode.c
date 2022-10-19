@@ -67,7 +67,7 @@
 #  endif
 #elif defined(BGF_DECODER)
 #  if(LEVEL == 1)
-#    define MAX_IT 5
+#    define MAX_IT 9
 #  elif(LEVEL == 3)
 #    define MAX_IT 6
 #  elif(LEVEL == 5)
@@ -77,10 +77,28 @@
 #  endif
 #endif
 
+// 选择 th 计算方法, 0 使用原始方法, 1 使用论文方法
+#define SELECT_TH 0
+
 #define EQ_COLUMN 101 // 索引矩阵列数
 #define ROW       R_BITS
 #define X         EQ_COLUMN - 1
 #define N         2 * R_BITS
+
+// 与 运算函数
+// 对长字节流, a 和 b 与, 保存在 res 中 res = (a & b)
+_INLINE_ ret_t
+gf2x_and(OUT uint8_t      *res,
+         IN const uint8_t *a,
+         IN const uint8_t *b,
+         IN const uint64_t bytelen)
+{
+  for(uint64_t i = 0; i < bytelen; i++)
+  {
+    res[i] = a[i] & b[i];
+  }
+  return SUCCESS;
+}
 
 // 利用论文中的方法计算 th
 _INLINE_ double_t
@@ -635,7 +653,7 @@ find_err1(OUT split_e_t                  *e,
           IN const syndrome_t            *syndrome,
           IN const compressed_idx_dv_ar_t wlist,
           IN const uint8_t                threshold,
-          IN const uint8_t                delat)
+          IN const uint8_t                delta)
 {
   // This function uses the bit-slice-adder methodology of [5]:
   // QcBits: Constant-Time Small-Key Code-Based Cryptography
@@ -691,7 +709,7 @@ find_err1(OUT split_e_t                  *e,
     //    For that we reuse the rotated_syndrome variable setting it to all "1".
     // 通过将 “DELTA” δ 添加到 UPC 数组来计算灰度误差数组。
     // 为此，我们重用 rotate_syndrome 变量，将其设置为全“1”。
-    for(size_t l = 0; l < delat; l++)
+    for(size_t l = 0; l < delta; l++)
     {
       memset((uint8_t *)rotated_syndrome.qw, 0xff, R_SIZE);
       bit_sliced_adder(&upc, &rotated_syndrome, SLICES);
@@ -767,12 +785,14 @@ decode(OUT split_e_t       *e,
        IN const syndrome_t *original_s,
        IN const ct_t       *ct,
        IN const sk_t       *sk,
-       IN const uint8_t     delat)
+       IN const uint8_t     delta,
+       IN uint64_t          iter_test)
 {
   // 初始化黑灰数组
-  split_e_t  black_e = {0};
-  split_e_t  gray_e  = {0};
-  split_e_t  fixed_e = {0};
+  split_e_t  black_e         = {0};
+  split_e_t  gray_e          = {0};
+  split_e_t  fixed_e         = {0};
+  split_e_t  black_or_gray_e = {0};
   syndrome_t s;
 
   // 构建出循环矩阵的索引 h_matrix 方便后面使用
@@ -817,13 +837,20 @@ decode(OUT split_e_t       *e,
   //   printf("第 %u 个 syndrome->qw 的值为: %lu\n", i_test_s, s.qw[i_test_s]);
   // }
 
-  // 用于保存 th
-  double_t th_array[MAX_IT] = {0};
-  uint16_t s_array[MAX_IT]  = {0};
+  // 用于保存 th s 包含错误与否
+  double_t th_array[MAX_IT]  = {0};
+  uint16_t s_array[MAX_IT]   = {0};
+  uint8_t  include_e[MAX_IT] = {0};
+
+  // ---- test ---- 测试用 th
+  uint8_t th_test = 44;
 
   // 进入大迭代过程(for itr in 1...XBG do:)
   for(uint32_t iter = 0; iter < MAX_IT; iter++)
   {
+    // 用于检测是否包括错误向量
+    split_e_t res_include_e = {0};
+
     // 将 fixed_e 和 求出来的 e 异或
     GUARD(gf2x_add((uint8_t *)&fixed_e.val[0].raw, R_e->val[0].raw, e->val[0].raw,
                    R_SIZE));
@@ -841,20 +868,35 @@ decode(OUT split_e_t       *e,
     uint16_t fixed_e_weight = r_bits_vector_weight(&fixed_e.val[0]) +
                               r_bits_vector_weight(&fixed_e.val[1]);
 
-    // 获取当前 s 的重量
-    uint16_t s_weight = r_bits_vector_weight((const r_t *)s.qw);
-
+    // 原代码方法
     // const uint8_t threshold = get_threshold(&s);
-    // ---- test ---- 使用论文方法计算的 th
+
+    // 使用论文方法计算的 th
     const double_t threshold_2 = compute_th_R(sk_wlist_all_0, sk_wlist_all_1,
                                               fixed_e_weight, &fixed_e, &s);
 
-    // 保存 th 和 s
-    th_array[iter] = threshold_2;
-    s_array[iter]  = s_weight;
+    // 获取当前 s 的重量
+    uint16_t s_weight = r_bits_vector_weight((const r_t *)s.qw);
 
-    // 把 th 向上取整
-    uint8_t threshold = (uint8_t)threshold_2 + 1;
+    uint8_t threshold = 0;
+    // 选择使用哪种计算方法
+    if(SELECT_TH == 0)
+    {
+      threshold = get_threshold(&s);
+    }
+    else if(SELECT_TH == 1)
+    {
+      // 把 th 向上取整
+      threshold = (uint8_t)threshold_2 + 1;
+    }
+    else
+    {
+      threshold = th_test--;
+    }
+
+    // 保存 th 和 s
+    th_array[iter] = threshold;
+    s_array[iter]  = s_weight;
 
     // ---- test ---- 查看 th
     // printf("threshold = %u\n", threshold);
@@ -868,7 +910,28 @@ decode(OUT split_e_t       *e,
     // 23:  (s, e, black, gray) = BitFlipIter(s, e, th, H) . Step I
     // H -- sk->wlist
     // 进入 procedure BitFlipIter(s, e, th, H)
-    find_err1(e, &black_e, &gray_e, &s, sk->wlist, threshold, delat);
+    find_err1(e, &black_e, &gray_e, &s, sk->wlist, threshold, delta);
+
+    // 检查是否包含所有错误向量
+    // 将 black_e 和 gray_e 合并为 black_or_gray_e
+    GUARD(gf2x_or((uint8_t *)&black_or_gray_e.val[0].raw, black_e.val[0].raw,
+                  gray_e.val[0].raw, R_SIZE));
+    GUARD(gf2x_or((uint8_t *)&black_or_gray_e.val[1].raw, black_e.val[1].raw,
+                  gray_e.val[1].raw, R_SIZE));
+    GUARD(gf2x_and((uint8_t *)&res_include_e.val[0].raw,
+                   black_or_gray_e.val[0].raw, R_e->val[0].raw, R_SIZE));
+    GUARD(gf2x_and((uint8_t *)&res_include_e.val[1].raw,
+                   black_or_gray_e.val[1].raw, R_e->val[1].raw, R_SIZE));
+    uint16_t res_weight = r_bits_vector_weight((r_t *)res_include_e.val[0].raw) +
+                          r_bits_vector_weight((r_t *)res_include_e.val[1].raw);
+    if(res_weight == T1)
+    {
+      include_e[iter] = 1;
+    }
+    else
+    {
+      include_e[iter] = 0;
+    }
 
     // 10:  s = H(cT + eT ) . 更新校验子 syndrome
     GUARD(recompute_syndrome(&s, ct, sk, e));
@@ -1068,7 +1131,7 @@ decode(OUT split_e_t       *e,
   // {
   //   FILE *fp_2;
   //   fp_2 = fopen("weight_bad.txt", "a");
-  //   fprintf(fp_2, "DELAT: %d 解方程失败\n", delat);
+  //   fprintf(fp_2, "DELTA: %d 解方程失败\n", delta);
   //   // fprintf(fp_2, "v_0 重量为: %u\n", verify_weight_0);
   //   // fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
   //   fclose(fp_2);
@@ -1108,24 +1171,27 @@ decode(OUT split_e_t       *e,
   // printf("\n");
 
   FILE *fp;
-  if(delat == 3)
+  if(delta == DELTA)
   {
-    fp = fopen("DELAT_3_th_s.txt", "a");
+    fp = fopen("DELTA_th_s.txt", "a");
+    fprintf(fp, "Code test %lu\n", iter_test);
     for(uint8_t i = 0; i < MAX_IT; i++)
     {
       fprintf(fp, "%f ", th_array[i]);
-      fprintf(fp, "%d\n", s_array[i]);
+      fprintf(fp, "%u ", s_array[i]);
+      fprintf(fp, "%u\n", include_e[i]);
     }
     fprintf(fp, "\n");
   }
   else
   {
-    fp = fopen("DELAT_4_th_s.txt", "a");
+    fp = fopen("DELTA_4_th_s.txt", "a");
+    fprintf(fp, "Code test %lu\n", iter_test);
     for(uint8_t i = 0; i < MAX_IT; i++)
     {
-
       fprintf(fp, "%f ", th_array[i]);
-      fprintf(fp, "%d\n", s_array[i]);
+      fprintf(fp, "%u ", s_array[i]);
+      fprintf(fp, "%u\n", include_e[i]);
     }
     fprintf(fp, "\n");
   }
@@ -1137,7 +1203,7 @@ decode(OUT split_e_t       *e,
   {
     FILE *fp_3;
     fp_3 = fopen("weight_bad.txt", "a");
-    fprintf(fp_3, "DELAT: %d 黑灰译码失败\n", delat);
+    fprintf(fp_3, "DELTA: %d 黑灰译码失败 Code test %lu\n", delta, iter_test);
     fclose(fp_3);
     // *flag = 1;
     DMSG("s 重量不为 0...");

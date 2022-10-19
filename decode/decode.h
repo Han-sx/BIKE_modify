@@ -32,7 +32,8 @@ decode(OUT split_e_t       *e,
        IN const syndrome_t *s,
        IN const ct_t       *ct,
        IN const sk_t       *sk,
-       IN const uint8_t     delat);
+       IN const uint8_t     delta,
+       IN uint64_t iter_test);
 
 // Rotate right the first R_BITS of a syndrome.
 // Assumption: the syndrome contains three R_BITS duplications.
