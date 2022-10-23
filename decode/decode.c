@@ -90,7 +90,8 @@ _INLINE_ void
 compute_upc_and_save(IN upc_t upc)
 {
   // ---- test ---- 将 upc 切片的值计算出来并保存
-  // 处理前 184 位
+  uint64_t mask_1 = 1;
+  // 处理前 R_QW - 1 位
   // 将每层累计得到的 upc_i 写入文件
   FILE *fp_2;
   fp_2 = fopen("iter_data.txt", "a");
@@ -111,8 +112,9 @@ compute_upc_and_save(IN upc_t upc)
       fprintf(fp_2, "%u ", upc_i);
     }
   }
-  // 处理最后 3 位
-  for(uint64_t location = 1; location < 8; location <<= 1)
+  // 处理最后 (R_BITS - (R_QW - 1) * 64) 位
+  for(uint64_t location = 1; location < (mask_1 << (R_BITS - (R_QW - 1) * 64));
+      location <<= 1)
   {
     // 用于保存每个upc[i]的值
     uint16_t upc_i = 0;
@@ -978,7 +980,7 @@ decode(OUT split_e_t       *e,
     // 记录 s 和 th
     // 获取当前 s 的重量
     uint16_t s_weight_2 = r_bits_vector_weight((const r_t *)s.qw);
-    FILE *fp_4;
+    FILE    *fp_4;
     fp_4 = fopen("iter_data.txt", "a");
     fprintf(fp_4, "%u ", s_weight_2);
     fprintf(fp_4, "%u ", ((DV + 1) / 2) + 1);
@@ -1015,7 +1017,7 @@ decode(OUT split_e_t       *e,
     // 记录 s 和 th
     // 获取当前 s 的重量
     uint16_t s_weight_3 = r_bits_vector_weight((const r_t *)s.qw);
-    FILE *fp_6;
+    FILE    *fp_6;
     fp_6 = fopen("iter_data.txt", "a");
     fprintf(fp_6, "%u ", s_weight_3);
     fprintf(fp_6, "%u ", ((DV + 1) / 2) + 1);
