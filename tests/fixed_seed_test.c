@@ -44,13 +44,13 @@ main()
   uint8_t k_enc[sizeof(ss_t)] = {0}; // shared secret after encapsulate
   uint8_t k_dec[sizeof(ss_t)] = {0}; // shared secret after decapsulate
 
-  for(uint32_t i = 1; i <= NUM_OF_TESTS; ++i)
+  for(uint64_t i = 1; i <= NUM_OF_TESTS; ++i)
   {
     int res = 0;
 
-    printf("Code test: %d\n",i);
+    printf("Code test: %ld\n",i);
 
-    MSG("Code test: %d\n\n", i);
+    MSG("Code test: %ld\n\n", i);
 
     // Key generation 密钥生成
     // h0 h1, σ0 σ1, g 在此步骤中均随机采样
@@ -79,9 +79,13 @@ main()
     // MEASURE("  decaps", dec_rc = crypto_kem_dec(k_dec, ct, sk););
     dec_rc = crypto_kem_dec(k_dec, ct, sk);
 
+    if(dec_rc == 1){
+      break;
+    }
+
     if(dec_rc != 0)
     {
-      printf("Decoding failed after %d code tests!\n", i);
+      printf("Decoding failed after %ld code tests!\n", i);
     }
     else
     {

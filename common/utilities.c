@@ -65,7 +65,7 @@ print_uint64(IN const uint64_t val, IN FILE *fp_2)
   fprintf(fp_2, "%.16" PRIx64, tmp);
 
 #ifndef NO_SPACE
-  // printf(" ");
+  fprintf(fp_2, " ");
 #endif
 }
 
@@ -135,7 +135,7 @@ print_last_block(IN const uint8_t *last_bytes,
   }
 
 #ifndef NO_SPACE
-  // printf(" ");
+  fprintf(fp_1, " ");
 #endif
 
   return 1;
@@ -211,7 +211,7 @@ fprintf_LE(IN const uint64_t *in, IN const uint32_t bits_num)
     print_uint64(in[i], fp);
     // print_newline(qw_pos);
   }
-  fprintf(fp," ");
+  // fprintf(fp," ");
   fclose(fp);
   // printf("\n");
 }

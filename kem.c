@@ -459,6 +459,12 @@ crypto_kem_dec(OUT unsigned char      *ss,
   // uint8_t  flag = 0;
   uint32_t dec_ret =
       decode(&e, &R_e, &syndrome, l_ct, l_sk, DELTA) != SUCCESS ? 0 : 1;
+
+  // 错误时终止
+  if (dec_ret == 0){
+    return 1;
+  }
+  
   // GUARD(gf2x_and((uint8_t *)&res_include.val[0].raw,
   //                black_or_gray_e_out.val[0].raw, R_e.val[0].raw, R_SIZE));
   // GUARD(gf2x_and((uint8_t *)&res_include.val[1].raw,
