@@ -78,7 +78,7 @@
 #endif
 
 // 0 使用代码原始线性拟合计算, 1 使用论文方法计算
-#define TH_SELECT 1
+#define TH_SELECT 0
 
 #define EQ_COLUMN 101 // 索引矩阵列数
 #define ROW       R_BITS
