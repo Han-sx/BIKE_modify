@@ -133,8 +133,10 @@ compute_upc_and_save(IN upc_t upc)
 
 // 利用论文中的方法计算 th
 _INLINE_ double_t
-compute_th_R(IN uint16_t sk_wlist_all_0[][DV],
-             IN uint16_t sk_wlist_all_1[][DV],
+compute_th_R(IN OUT double_t *x_out,
+             IN OUT double_t *p_p,
+             IN uint16_t      sk_wlist_all_0[][DV],
+             IN uint16_t      sk_wlist_all_1[][DV],
              // IN const split_e_t  *e,
              IN const uint16_t    T,
              IN const split_e_t  *R_e,
@@ -205,12 +207,16 @@ compute_th_R(IN uint16_t sk_wlist_all_0[][DV],
       }
       // 求当前 x
       x += (i_l - 1) * R_BITS * pow(10, (A + B - C));
+      // 求一个 概率验证数 p_p
+      *p_p += (double_t)pow(10, (A + B - C));
     }
   }
 
   // ---- 3. 计算 T ----
   double_t pai_0 = (double_t)(2 * DV * s_weight - x) / ((2 * R_BITS - T) * DV);
   double_t pai_1 = (double_t)(s_weight + x) / (T * DV);
+  // 取出 pai_1
+  *x_out = x;
 
   double_t th = (log10((double_t)(2 * R_BITS - T) / T) +
                  DV * log10((1 - pai_0) / (1 - pai_1))) /
@@ -907,9 +913,12 @@ decode(OUT split_e_t       *e,
     uint16_t fixed_e_weight = r_bits_vector_weight(&fixed_e.val[0]) +
                               r_bits_vector_weight(&fixed_e.val[1]);
 
-    // ---- test ---- 使用论文方法计算的 th
-    const double_t threshold_2 = compute_th_R(sk_wlist_all_0, sk_wlist_all_1,
-                                              fixed_e_weight, &fixed_e, &s);
+    // ---- test ---- 使用论文方法计算的 th, 同时获取一个概率验证 p_p 和 x
+    double_t       p_p   = 0;
+    double_t       x = 0;
+    const double_t threshold_2 =
+        compute_th_R(&x, &p_p, sk_wlist_all_0, sk_wlist_all_1, fixed_e_weight,
+                     &fixed_e, &s);
 
     // 获取当前 s 的重量
     uint16_t s_weight = r_bits_vector_weight((const r_t *)s.qw);
@@ -956,9 +965,10 @@ decode(OUT split_e_t       *e,
     // 记录当前的 gray_e1
     fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
 
-    // 断行
+    // 将 p_p 加入文件尾部, 并断行
     FILE *fp_3;
     fp_3 = fopen("iter_data.txt", "a");
+    fprintf(fp_3, "%f %f", p_p, x);
     fprintf(fp_3, "\n");
     fclose(fp_3);
 
@@ -1008,9 +1018,10 @@ decode(OUT split_e_t       *e,
     // 记录当前的 gray_e1
     fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
 
-    // 断行
+    // 将 p_p 加入尾部, 并断行
     FILE *fp_5;
     fp_5 = fopen("iter_data.txt", "a");
+    fprintf(fp_5, "%f %f", p_p, x);
     fprintf(fp_5, "\n");
     fclose(fp_5);
 
@@ -1040,9 +1051,10 @@ decode(OUT split_e_t       *e,
     // 记录当前的 gray_e1
     fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
 
-    // 断行
+    // 将 p_p 加入尾部, 并断行
     FILE *fp_7;
     fp_7 = fopen("iter_data.txt", "a");
+    fprintf(fp_7, "%f %f", p_p, x);
     fprintf(fp_7, "\n");
     fclose(fp_7);
 
@@ -1292,10 +1304,10 @@ decode(OUT split_e_t       *e,
     BIKE_ERROR(E_DECODING_FAILURE);
   }
 
-  // 译码成功则删除文件
-  if(remove("iter_data.txt") == 0)
-  {
-  }
+  // // 译码成功则删除文件
+  // if(remove("iter_data.txt") == 0)
+  // {
+  // }
 
   // // ---- test ---- fprintf_LE 测试
   // fprintf_LE((const uint64_t *)R_e, R_BITS);
