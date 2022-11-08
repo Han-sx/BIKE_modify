@@ -82,6 +82,9 @@
 #define X         EQ_COLUMN - 1
 #define N         2 * R_BITS
 
+// 0 使用拟合方法，1 使用论文方法
+#define TH_SELECT 0
+
 // 利用论文中的方法计算 th
 _INLINE_ uint8_t
 compute_th_R(IN uint16_t sk_wlist_all_0[][DV],
@@ -851,14 +854,17 @@ decode(OUT split_e_t       *black_or_gray_e_out,
 
     // 获取当前 fixed_e 的重量
     uint16_t fixed_e_weight = r_bits_vector_weight(&fixed_e.val[0]) + r_bits_vector_weight(&fixed_e.val[1]);
-
-    // const uint8_t threshold = get_threshold(&s);
-    // ---- test ---- 使用论文方法计算的 th
-    const uint8_t threshold =
-        compute_th_R(sk_wlist_all_0, sk_wlist_all_1, fixed_e_weight, &fixed_e, &s);
+    
+    uint8_t threshold = 0;
+    // 选择使用何种方法计算 th
+    if(TH_SELECT == 0){
+      threshold = get_threshold(&s);
+    }else{
+      threshold = compute_th_R(sk_wlist_all_0, sk_wlist_all_1, fixed_e_weight, &fixed_e, &s);
+    }
 
     // ---- test ---- 查看 th
-    printf("threshold = %u\n", threshold);
+    // printf("threshold = %u\n", threshold);
     // printf("MY_threshold = %u\n\n", threshold_2);
 
     DMSG("    Iteration: %d\n", iter);
@@ -1131,7 +1137,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   //                R_SIZE));
   // print("测试结果：", (uint64_t *)&ct_test[0].val, R_BITS);
 
-  printf("\n");
+  // printf("\n");
 
   //  26: if (wt(s) != 0) then
   //  27:     return ⊥(ERROR)
