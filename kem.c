@@ -24,6 +24,24 @@
 #include "sampling.h"
 #include "sha.h"
 
+// 定义全局变量,用于测试是否包括所有错误位置
+split_e_t R_e = {0};
+
+// 与运算函数
+// 对长字节流, a 和 b 与, 保存在 res 中 res = (a & b)
+_INLINE_ ret_t
+gf2x_and(OUT uint8_t      *res,
+         IN const uint8_t *a,
+         IN const uint8_t *b,
+         IN const uint64_t bytelen)
+{
+  for(uint64_t i = 0; i < bytelen; i++)
+  {
+    res[i] = a[i] & b[i];
+  }
+  return SUCCESS;
+}
+
 _INLINE_ void
 split_e(OUT split_e_t *splitted_e, IN const e_t *e)
 {
@@ -134,7 +152,11 @@ function_h(OUT split_e_t *splitted_e, IN const r_t *in0, IN const r_t *in1)
 }
 
 _INLINE_ ret_t
-encrypt(OUT ct_t *ct, OUT split_e_t *mf, IN const pk_t *pk, IN const seed_t *seed)
+encrypt(OUT split_e_t   *e_out,
+        OUT ct_t        *ct,
+        OUT split_e_t   *mf,
+        IN const pk_t   *pk,
+        IN const seed_t *seed)
 {
   DEFER_CLEANUP(padded_r_t m = {0}, padded_r_cleanup);
 
@@ -187,8 +209,10 @@ encrypt(OUT ct_t *ct, OUT split_e_t *mf, IN const pk_t *pk, IN const seed_t *see
   ct->val[1] = p_ct[1].val;
 
   // Copy the internal mf to the output parameters.
-  mf->val[0] = mf_int[0].val;
-  mf->val[1] = mf_int[1].val;
+  mf->val[0]    = mf_int[0].val;
+  mf->val[1]    = mf_int[1].val;
+  e_out->val[0] = splitted_e.val[0];
+  e_out->val[1] = splitted_e.val[1];
 
   print("e0: ", (uint64_t *)splitted_e.val[0].raw, R_BITS);
   print("e1: ", (uint64_t *)splitted_e.val[1].raw, R_BITS);
@@ -199,10 +223,10 @@ encrypt(OUT ct_t *ct, OUT split_e_t *mf, IN const pk_t *pk, IN const seed_t *see
 }
 
 _INLINE_ ret_t
-reencrypt(OUT pad_ct_t ce,
-          OUT split_e_t *e2,
+reencrypt(OUT pad_ct_t        ce,
+          OUT split_e_t      *e2,
           IN const split_e_t *e,
-          IN const ct_t *l_ct)
+          IN const ct_t      *l_ct)
 {
   // Compute (c0 + e0') and (c1 + e1')
   GUARD(gf2x_add(ce[0].val.raw, l_ct->val[0].raw, e->val[0].raw, R_SIZE));
@@ -281,10 +305,11 @@ crypto_kem_keypair(OUT unsigned char *pk, OUT unsigned char *sk)
   GUARD(generate_sparse_rep((uint64_t *)&p_sk[0], l_sk->wlist[0].val, DV, R_BITS,
                             sizeof(p_sk[0]), &h_prf_state));
 
-  printf("\nl_sk->wlist[0]的索引值(h0中1的位置): \n");
-  for(uint32_t y = 0; y < 71; y++){
-    printf("%u\n",(l_sk->wlist[0].val)[y]);
-  }
+  // printf("\nl_sk->wlist[0]的索引值(h0中1的位置): \n");
+  // for(uint32_t y = 0; y < 71; y++)
+  // {
+  //   printf("%u\n", (l_sk->wlist[0].val)[y]);
+  // }
 
   // Copy data
   l_sk->bin[0] = p_sk[0].val;
@@ -300,23 +325,25 @@ crypto_kem_keypair(OUT unsigned char *pk, OUT unsigned char *sk)
   GUARD(generate_sparse_rep((uint64_t *)&p_sk[1], l_sk->wlist[1].val, DV, R_BITS,
                             sizeof(p_sk[1]), &h_prf_state));
 
-  printf("\nl_sk->wlist[1]的索引值(h1中1的位置): \n");
-  for(uint32_t z = 0; z < 71; z++){
-    printf("%u\n",(l_sk->wlist[1].val)[z]);
-  }
+  // printf("\nl_sk->wlist[1]的索引值(h1中1的位置): \n");
+  // for(uint32_t z = 0; z < 71; z++)
+  // {
+  //   printf("%u\n", (l_sk->wlist[1].val)[z]);
+  // }
 
   // Copy data
   l_sk->bin[1] = p_sk[1].val;
 
   DMSG("    Calculating the public key.\n");
-  
+
   // 计算 pk (f0, f1) = (gh1, gh0)
   // 此函数包含对 g 采样
   GUARD(calc_pk(l_pk, &seeds.seed[1], p_sk));
 
   print("h0: ", (uint64_t *)&l_sk->bin[0], R_BITS);
   // for(uint16_t i_test = 0; i_test < 100; i_test++){
-  //   printf("l_sk->bin[0].raw[%u] 的值为: %u \n\n", i_test, l_sk->bin[0].raw[i_test]);
+  //   printf("l_sk->bin[0].raw[%u] 的值为: %u \n\n", i_test,
+  //   l_sk->bin[0].raw[i_test]);
   // }
   print("h1: ", (uint64_t *)&l_sk->bin[1], R_BITS);
   print("h0c:", (uint64_t *)&l_sk->wlist[0], SIZEOF_BITS(compressed_idx_dv_t));
@@ -333,16 +360,16 @@ crypto_kem_keypair(OUT unsigned char *pk, OUT unsigned char *sk)
 //               ct is a key encapsulation message (ciphertext),
 //               ss is the shared secret.
 int
-crypto_kem_enc(OUT unsigned char *     ct,
-               OUT unsigned char *     ss,
+crypto_kem_enc(OUT unsigned char      *ct,
+               OUT unsigned char      *ss,
                IN const unsigned char *pk)
 {
   DMSG("  Enter crypto_kem_enc.\n");
 
   // Convert to the types that are used by this implementation
   const pk_t *l_pk = (const pk_t *)pk;
-  ct_t *      l_ct = (ct_t *)ct;
-  ss_t *      l_ss = (ss_t *)ss;
+  ct_t       *l_ct = (ct_t *)ct;
+  ss_t       *l_ss = (ss_t *)ss;
 
   // For NIST DRBG_CTR
   DEFER_CLEANUP(seeds_t seeds = {0}, seeds_cleanup);
@@ -360,8 +387,8 @@ crypto_kem_enc(OUT unsigned char *     ct,
   // (e0, e1) = H(mf0, mf1) where wt(e0) + wt(e1) = t
   // (c0, c1) = (mf0 + e0, mf1 + e1)
   // 此函数包含 m 的随机采样
-  GUARD(encrypt(l_ct, &mf, l_pk, &seeds.seed[1]));
-  
+  GUARD(encrypt(&R_e, l_ct, &mf, l_pk, &seeds.seed[1]));
+
   // 获取共享密钥 k
   DMSG("    Generating shared secret.\n");
   get_ss(l_ss, &mf.val[0], &mf.val[1], l_ct);
@@ -375,25 +402,42 @@ crypto_kem_enc(OUT unsigned char *     ct,
 //               sk is the private key,
 //               ss is the shared secret
 int
-crypto_kem_dec(OUT unsigned char *     ss,
+crypto_kem_dec(OUT unsigned char      *ss,
                IN const unsigned char *ct,
                IN const unsigned char *sk)
 {
   DMSG("\n  Enter crypto_kem_dec(译码开始).\n");
 
+  // 增加 black_or_gray_e_out 用来验证是否包含所有错误向量
+  split_e_t black_or_gray_e_out   = {0};
+  split_e_t black_or_gray_e_out_5 = {0};
+  split_e_t black_or_gray_e_out_7 = {0};
+  // split_e_t black_or_gray_e_out_9 = {0};
+
   // Convert to the types used by this implementation
   const sk_t *l_sk = (const sk_t *)sk;
   const ct_t *l_ct = (const ct_t *)ct;
-  ss_t *      l_ss = (ss_t *)ss;
+  ss_t       *l_ss = (ss_t *)ss;
 
   // Force zero initialization.
   DEFER_CLEANUP(syndrome_t syndrome = {0}, syndrome_cleanup);
   DEFER_CLEANUP(split_e_t e, split_e_cleanup);
+  // 添加对 5 7 9 测试
+  DEFER_CLEANUP(syndrome_t syndrome_5 = {0}, syndrome_cleanup);
+  DEFER_CLEANUP(split_e_t e_5, split_e_cleanup);
+  DEFER_CLEANUP(syndrome_t syndrome_7 = {0}, syndrome_cleanup);
+  DEFER_CLEANUP(split_e_t e_7, split_e_cleanup);
+  DEFER_CLEANUP(syndrome_t syndrome_9 = {0}, syndrome_cleanup);
+  DEFER_CLEANUP(split_e_t e_9, split_e_cleanup);
 
   DMSG("  Computing s.\n");
   // Compute the syndrome s = c0h0 + c1h1
   // 计算初始校验子 s
   GUARD(compute_syndrome(&syndrome, l_ct, l_sk));
+  // 添加对 5 7 9 测试
+  GUARD(compute_syndrome(&syndrome_5, l_ct, l_sk));
+  GUARD(compute_syndrome(&syndrome_7, l_ct, l_sk));
+  GUARD(compute_syndrome(&syndrome_9, l_ct, l_sk));
 
   // // -- test --
   // for(uint16_t i_qw = 0; i_qw < 555; i_qw++)
@@ -401,8 +445,243 @@ crypto_kem_dec(OUT unsigned char *     ss,
   //   printf("第 %u 个 syndrome->qw 的值为: %lu\n", i_qw, syndrome.qw[i_qw]);
   // }
 
+  // 用于检测错误向量是否包含
+  split_e_t res_include   = {0};
+  split_e_t res_include_5 = {0};
+  split_e_t res_include_7 = {0};
+  // split_e_t res_include_9 = {0};
+
+  // e 的重量
+  uint16_t e_weight = r_bits_vector_weight((r_t *)R_e.val[0].raw) +
+                      r_bits_vector_weight((r_t *)R_e.val[1].raw);
+
   DMSG("  Decoding.\n"); // 使用黑灰译码，IN syndrome, l_ct and l_sk, OUT e
-  uint32_t dec_ret = decode(&e, &syndrome, l_ct, l_sk) != SUCCESS ? 0 : 1;
+  uint8_t  flag = 0;
+  uint32_t dec_ret =
+      decode((split_e_t *)&black_or_gray_e_out, &e, (uint8_t *)&flag, &R_e,
+             &syndrome, l_ct, l_sk, DELTA) != SUCCESS
+          ? 0
+          : 1;
+  GUARD(gf2x_and((uint8_t *)&res_include.val[0].raw,
+                 black_or_gray_e_out.val[0].raw, R_e.val[0].raw, R_SIZE));
+  GUARD(gf2x_and((uint8_t *)&res_include.val[1].raw,
+                 black_or_gray_e_out.val[1].raw, R_e.val[1].raw, R_SIZE));
+  uint16_t res_weight = r_bits_vector_weight((r_t *)res_include.val[0].raw) +
+                        r_bits_vector_weight((r_t *)res_include.val[1].raw);
+  FILE *fp;
+  fp = fopen("weight_bad.txt", "a");
+  if(res_weight != e_weight)
+  {
+    fprintf(fp, "DELAT: %d 不包含所有错误向量\n", DELTA);
+    flag = 1;
+  }
+  if(flag == 1)
+  {
+    fprintf(fp, "\n");
+  }
+  fclose(fp);
+  flag = 0;
+
+  // 添加对 delta 5 7 9 的测试
+  uint8_t  flag_5 = 0;
+  uint32_t dec_ret_5 =
+      decode((split_e_t *)&black_or_gray_e_out_5, &e_5, (uint8_t *)&flag_5, &R_e,
+             &syndrome_5, l_ct, l_sk, DELTA_5) != SUCCESS
+          ? 0
+          : 1;
+  GUARD(gf2x_and((uint8_t *)&res_include_5.val[0].raw,
+                 black_or_gray_e_out_5.val[0].raw, R_e.val[0].raw, R_SIZE));
+  GUARD(gf2x_and((uint8_t *)&res_include_5.val[1].raw,
+                 black_or_gray_e_out_5.val[1].raw, R_e.val[1].raw, R_SIZE));
+  uint16_t res_weight_5 = r_bits_vector_weight((r_t *)res_include_5.val[0].raw) +
+                          r_bits_vector_weight((r_t *)res_include_5.val[1].raw);
+  FILE *fp_5;
+  fp_5 = fopen("weight_bad.txt", "a");
+  if(res_weight_5 != e_weight)
+  {
+    fprintf(fp_5, "DELAT: %d 不包含所有错误向量\n", DELTA_5);
+    flag_5 = 1;
+  }
+  if(flag_5 == 1)
+  {
+    fprintf(fp_5, "\n");
+  }
+  fclose(fp_5);
+  flag_5 = 0;
+
+  uint8_t  flag_7 = 0;
+  uint32_t dec_ret_7 =
+      decode((split_e_t *)&black_or_gray_e_out_7, &e_7, (uint8_t *)&flag_7, &R_e,
+             &syndrome_7, l_ct, l_sk, DELTA_7) != SUCCESS
+          ? 0
+          : 1;
+  GUARD(gf2x_and((uint8_t *)&res_include_7.val[0].raw,
+                 black_or_gray_e_out_7.val[0].raw, R_e.val[0].raw, R_SIZE));
+  GUARD(gf2x_and((uint8_t *)&res_include_7.val[1].raw,
+                 black_or_gray_e_out_7.val[1].raw, R_e.val[1].raw, R_SIZE));
+  uint16_t res_weight_7 = r_bits_vector_weight((r_t *)res_include_7.val[0].raw) +
+                          r_bits_vector_weight((r_t *)res_include_7.val[1].raw);
+  FILE *fp_7;
+  fp_7 = fopen("weight_bad.txt", "a");
+  if(res_weight_7 != e_weight)
+  {
+    fprintf(fp_7, "DELAT: %d 不包含所有错误向量\n", DELTA_7);
+    flag_7 = 1;
+  }
+  if(flag_7 == 1)
+  {
+    fprintf(fp_7, "\n");
+  }
+  fclose(fp_7);
+  flag_7 = 0;
+
+  // uint8_t  flag_9 = 0;
+  // uint32_t dec_ret_9 =
+  //     decode((split_e_t *)&black_or_gray_e_out_9, &e_9, (uint8_t *)&flag_9, &R_e,
+  //            &syndrome_9, l_ct, l_sk, DELTA_9) != SUCCESS
+  //         ? 0
+  //         : 1;
+  // GUARD(gf2x_and((uint8_t *)&res_include_9.val[0].raw,
+  //                black_or_gray_e_out_9.val[0].raw, R_e.val[0].raw, R_SIZE));
+  // GUARD(gf2x_and((uint8_t *)&res_include_9.val[1].raw,
+  //                black_or_gray_e_out_9.val[1].raw, R_e.val[1].raw, R_SIZE));
+  // uint16_t res_weight_9 = r_bits_vector_weight((r_t *)res_include_9.val[0].raw) +
+  //                         r_bits_vector_weight((r_t *)res_include_9.val[1].raw);
+  // FILE *fp_9;
+  // fp_9 = fopen("weight_bad.txt", "a");
+  // if(res_weight_9 != e_weight)
+  // {
+  //   fprintf(fp_9, "DELAT: %d 不包含所有错误向量\n", DELTA_9);
+  //   flag_9 = 1;
+  // }
+  // if(flag_9 == 1)
+  // {
+  //   fprintf(fp_9, "\n");
+  // }
+  // fclose(fp_9);
+  // flag_9 = 0;
+
+  if(dec_ret_5 == 0)
+  {
+    // printf("5 译码失败\n");
+  }
+  else
+  {
+    // printf("5 译码成功\n");
+  }
+  if(dec_ret_7 == 0)
+  {
+    // printf("7 译码失败\n");
+  }
+  else
+  {
+    // printf("7 译码成功\n");
+  }
+  // if(dec_ret_9 == 0)
+  // {
+  //   // printf("9 译码失败\n");
+  // }
+  // else
+  // {
+  //   // printf("9 译码成功\n");
+  // }
+
+  // // ---- test ---- 打印错误向量和黑灰集合
+  // print("kem 的黑灰集合 0: ", (uint64_t *)&black_or_gray_e_out.val[0].raw,
+  // R_BITS); print("kem 的黑灰集合 1: ", (uint64_t
+  // *)&black_or_gray_e_out.val[1].raw, R_BITS); print("kem 的 R_e 0: ", (uint64_t
+  // *)&R_e.val[0].raw, R_BITS); print("kem 的 R_e 1: ", (uint64_t
+  // *)&R_e.val[1].raw, R_BITS);
+
+  // for(uint8_t i_N0 = 0; i_N0 < N0; i_N0++)
+  // {
+  //   GUARD(gf2x_and((uint8_t *)&res_include.val[i_N0].raw,
+  //                  black_or_gray_e_out.val[i_N0].raw, R_e.val[i_N0].raw,
+  //                  R_SIZE));
+  //   GUARD(gf2x_and((uint8_t *)&res_include_5.val[i_N0].raw,
+  //                  black_or_gray_e_out_5.val[i_N0].raw, R_e.val[i_N0].raw,
+  //                  R_SIZE));
+  //   GUARD(gf2x_and((uint8_t *)&res_include_7.val[i_N0].raw,
+  //                  black_or_gray_e_out_7.val[i_N0].raw, R_e.val[i_N0].raw,
+  //                  R_SIZE));
+  //   GUARD(gf2x_and((uint8_t *)&res_include_9.val[i_N0].raw,
+  //                  black_or_gray_e_out_9.val[i_N0].raw, R_e.val[i_N0].raw,
+  //                  R_SIZE));
+  // }
+  // // 与后的重量
+  // uint16_t res_weight = r_bits_vector_weight((r_t *)res_include.val[0].raw) +
+  //                       r_bits_vector_weight((r_t *)res_include.val[1].raw);
+  // uint16_t res_weight_5 = r_bits_vector_weight((r_t *)res_include_5.val[0].raw)
+  // +
+  //                         r_bits_vector_weight((r_t
+  //                         *)res_include_5.val[1].raw);
+  // uint16_t res_weight_7 = r_bits_vector_weight((r_t *)res_include_7.val[0].raw)
+  // +
+  //                         r_bits_vector_weight((r_t
+  //                         *)res_include_7.val[1].raw);
+  // uint16_t res_weight_9 = r_bits_vector_weight((r_t *)res_include_9.val[0].raw)
+  // +
+  //                         r_bits_vector_weight((r_t
+  //                         *)res_include_9.val[1].raw);
+
+  // // 异或前的重量相减
+  // uint8_t reduce_weight =
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out.val[0].raw) +
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out.val[1].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[0].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[1].raw);
+  // uint8_t reduce_weight_5 =
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out_5.val[0].raw) +
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out_5.val[1].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[0].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[1].raw);
+  // uint8_t reduce_weight_7 =
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out_7.val[0].raw) +
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out_7.val[1].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[0].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[1].raw);
+  // uint8_t reduce_weight_9 =
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out_9.val[0].raw) +
+  //     r_bits_vector_weight((r_t *)black_or_gray_e_out_9.val[1].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[0].raw) -
+  //     r_bits_vector_weight((r_t *)R_e.val[1].raw);
+
+  // // 判断是否两者重量相等
+  // FILE *fp;
+  // fp = fopen("error_vector_include.txt", "a");
+  // if(res_weight == e_weight)
+  // {
+  //   // fprintf(fp, "3 重量相等, 包含所有错误向量\n");
+  // }
+  // else
+  // {
+  //   fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA);
+  // }
+  // if(res_weight_5 == e_weight)
+  // {
+  //   // fprintf(fp, "5 重量相等, 包含所有错误向量\n");
+  // }
+  // else
+  // {
+  //   fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA_5);
+  // }
+  // if(res_weight_7 == e_weight)
+  // {
+  //   // fprintf(fp, "7 重量相等, 包含所有错误向量\n");
+  // }
+  // else
+  // {
+  //   fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA_7);
+  // }
+  // if(res_weight_9 == e_weight)
+  // {
+  //   // fprintf(fp, "9 重量相等, 包含所有错误向量\n");
+  // }
+  // else
+  // {
+  //   fprintf(fp, "%d 重量不相等, 不包含所有错误向量\n", DELTA_9);
+  // }
+  // fclose(fp);
 
   DEFER_CLEANUP(split_e_t e2, split_e_cleanup);
   DEFER_CLEANUP(pad_ct_t ce, pad_ct_cleanup);
@@ -434,5 +713,9 @@ crypto_kem_dec(OUT unsigned char *     ss,
   }
 
   DMSG("  Exit crypto_kem_dec(译码结束).\n");
+
+  // 将全局变量重置为 0
+  memset((uint8_t *)&R_e, 0, sizeof(split_e_t));
+
   return SUCCESS;
 }
