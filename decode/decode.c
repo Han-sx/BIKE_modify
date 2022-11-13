@@ -499,9 +499,18 @@ dup_two(IN OUT single_h_t *h)
   // qw[369] = (0,0,...,h11778,h11777,h11776)
   // qw[185] = (h63,h62,...,h1,h0)
   // qw[184] = (h11778,h11777,...,h11716,h11715)
-  h->qw[0] = (h->qw[R_QW] << LAST_R_QW_TRAIL) |
-             (h->qw[2 * R_QW - 1] << LAST_R_QW_TRAIL_2) |
-             (h->qw[2 * R_QW - 2] >> LAST_R_QW_LEAD_2);
+  if(LAST_R_QW_LEAD <= 32)
+  {
+    h->qw[0] = (h->qw[R_QW] << LAST_R_QW_TRAIL) |
+               (h->qw[2 * R_QW - 1] << (LAST_R_QW_TRAIL_2 % 64)) |
+               (h->qw[2 * R_QW - 2] >> (LAST_R_QW_LEAD_2 % 64));
+  }
+  else
+  {
+    h->qw[0] = (h->qw[R_QW] << LAST_R_QW_TRAIL) |
+               (h->qw[2 * R_QW - 1] >> (LAST_R_QW_TRAIL_3 % 64));
+  }
+
   // qw[0] = (h2,h1,h0,h11778,...,h11718)
 
   for(size_t i = R_QW - 1; i > 0; i--)
