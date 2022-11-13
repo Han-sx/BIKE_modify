@@ -457,11 +457,14 @@ crypto_kem_dec(OUT unsigned char      *ss,
 
   DMSG("  Decoding.\n"); // 使用黑灰译码，IN syndrome, l_ct and l_sk, OUT e
   uint8_t  flag = 0;
+  double start_decode = clock();
   uint32_t dec_ret =
       decode((split_e_t *)&black_or_gray_e_out, &e, (uint8_t *)&flag, &R_e,
              &syndrome, l_ct, l_sk, DELTA) != SUCCESS
           ? 0
           : 1;
+  double end_decode = clock();
+  printf("-- decode总时间 --: %lfs\n\n", ((double)(end_decode - start_decode) / CLOCKS_PER_SEC));
   GUARD(gf2x_and((uint8_t *)&res_include.val[0].raw,
                  black_or_gray_e_out.val[0].raw, R_e.val[0].raw, R_SIZE));
   GUARD(gf2x_and((uint8_t *)&res_include.val[1].raw,
@@ -484,11 +487,15 @@ crypto_kem_dec(OUT unsigned char      *ss,
 
   // 添加对 delta 5 7 9 的测试
   uint8_t  flag_5 = 0;
+  start_decode = clock();
   uint32_t dec_ret_5 =
       decode((split_e_t *)&black_or_gray_e_out_5, &e_5, (uint8_t *)&flag_5, &R_e,
              &syndrome_5, l_ct, l_sk, DELTA_5) != SUCCESS
           ? 0
           : 1;
+  end_decode = clock();
+  printf("-- decode总时间 --: %lfs\n\n", ((double)(end_decode - start_decode) / CLOCKS_PER_SEC));
+
   GUARD(gf2x_and((uint8_t *)&res_include_5.val[0].raw,
                  black_or_gray_e_out_5.val[0].raw, R_e.val[0].raw, R_SIZE));
   GUARD(gf2x_and((uint8_t *)&res_include_5.val[1].raw,
@@ -510,11 +517,15 @@ crypto_kem_dec(OUT unsigned char      *ss,
   flag_5 = 0;
 
   uint8_t  flag_7 = 0;
+  start_decode = clock();
   uint32_t dec_ret_7 =
       decode((split_e_t *)&black_or_gray_e_out_7, &e_7, (uint8_t *)&flag_7, &R_e,
              &syndrome_7, l_ct, l_sk, DELTA_7) != SUCCESS
           ? 0
           : 1;
+  end_decode = clock();
+  printf("-- decode总时间 --: %lfs\n\n", ((double)(end_decode - start_decode) / CLOCKS_PER_SEC));
+
   GUARD(gf2x_and((uint8_t *)&res_include_7.val[0].raw,
                  black_or_gray_e_out_7.val[0].raw, R_e.val[0].raw, R_SIZE));
   GUARD(gf2x_and((uint8_t *)&res_include_7.val[1].raw,
