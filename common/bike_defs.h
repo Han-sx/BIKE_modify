@@ -54,7 +54,7 @@
 #  define BLOCK_SIZE       32768
 #elif(LEVEL == 1)
 // 64-bits of post-quantum security parameters (BIKE paper):
-#  define R_BITS 10177
+#  define R_BITS 10163
 #  define DV     71
 #  define T1     134
 
@@ -113,6 +113,7 @@ bike_static_assert((N_BITS % ALL_YMM_SIZE != 0), nbits_512_err);
 #define LAST_R_QW_TRAIL   (64 - LAST_R_QW_LEAD)     // LAST_R_QW_TRAIL = 61
 #define LAST_R_QW_TRAIL_2 (64 - 2 * LAST_R_QW_LEAD) // LAST_R_QW_TRAIL_2 = 58
 #define LAST_R_QW_MASK    MASK(LAST_R_QW_LEAD) // LAST_R_QW_MASK = 7 = (bin)111
+#define LAST_R_QW_TRAIL_3 (64 - 2 * LAST_R_QW_TRAIL)
 
 #define LAST_R_BYTE_LEAD  (R_BITS & MASK(3))
 #define LAST_R_BYTE_TRAIL (8 - LAST_R_BYTE_LEAD)

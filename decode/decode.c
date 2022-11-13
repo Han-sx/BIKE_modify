@@ -473,9 +473,18 @@ dup_two(IN OUT single_h_t *h)
   // qw[369] = (0,0,...,h11778,h11777,h11776)
   // qw[185] = (h63,h62,...,h1,h0)
   // qw[184] = (h11778,h11777,...,h11716,h11715)
-  h->qw[0] = (h->qw[R_QW] << LAST_R_QW_TRAIL) |
-             (h->qw[2 * R_QW - 1] << LAST_R_QW_TRAIL_2) |
-             (h->qw[2 * R_QW - 2] >> LAST_R_QW_LEAD_2);
+  if(LAST_R_QW_LEAD <= 32)
+  {
+    h->qw[0] = (h->qw[R_QW] << LAST_R_QW_TRAIL) |
+               (h->qw[2 * R_QW - 1] << (LAST_R_QW_TRAIL_2 % 64)) |
+               (h->qw[2 * R_QW - 2] >> (LAST_R_QW_LEAD_2 % 64));
+  }
+  else
+  {
+    h->qw[0] = (h->qw[R_QW] << LAST_R_QW_TRAIL) |
+               (h->qw[2 * R_QW - 1] >> (LAST_R_QW_TRAIL_3 % 64));
+  }
+
   // qw[0] = (h2,h1,h0,h11778,...,h11718)
 
   for(size_t i = R_QW - 1; i > 0; i--)
@@ -886,14 +895,17 @@ decode(OUT split_e_t       *black_or_gray_e_out,
 
     for(uint8_t i = 0; i < N0; i++)
     {
-      if(iter <= 0){
+      if(iter <= 0)
+      {
         // 将黑灰集合'或'运算(black_e | gray_e) 存放于
         // black_or_gray_e，即所有未知数位
         GUARD(gf2x_or((uint8_t *)&black_or_gray_e.val[i].raw, black_e.val[i].raw,
                       gray_e.val[i].raw, R_SIZE));
-      }else{
+      }
+      else
+      {
         GUARD(gf2x_or((uint8_t *)&black_or_gray_e.val[i].raw, black_e.val[i].raw,
-                      black_e.val[i].raw, R_SIZE));        
+                      black_e.val[i].raw, R_SIZE));
       }
     }
 
@@ -1115,10 +1127,10 @@ decode(OUT split_e_t       *black_or_gray_e_out,
 
   if(verify_weight[0] || verify_weight[1] != 0)
   {
-    printf("DELAT: %d 需求解未知数: %u 解方程失败\n", delat,x_weight);
+    printf("DELAT: %d 需求解未知数: %u 解方程失败\n", delat, x_weight);
     FILE *fp_2;
     fp_2 = fopen("weight_bad.txt", "a");
-    fprintf(fp_2, "DELAT: %d 当前未知数: %u 解方程失败\n", delat,x_weight);
+    fprintf(fp_2, "DELAT: %d 当前未知数: %u 解方程失败\n", delat, x_weight);
     // fprintf(fp_2, "v_0 重量为: %u\n", verify_weight_0);
     // fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
     fclose(fp_2);
@@ -1126,7 +1138,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   }
   else
   {
-    printf("DELAT: %d 需求解未知数: %u\n", delat,x_weight);
+    printf("DELAT: %d 需求解未知数: %u\n", delat, x_weight);
   }
 
   // =================================================================
