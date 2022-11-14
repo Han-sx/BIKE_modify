@@ -985,482 +985,6 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     GUARD(recompute_syndrome(&s, ct, sk, e));
   }
 
-  // ================> 增加方程组求解算法(当 s 不为 0) <================
-  // =================================================================
-  // --------------------- 1.构建方程组 ---------------------
-
-  // 构建方程组计时
-  double start_construct = clock();
-
-  for(uint32_t i = 0; i < N0; i++)
-  {
-    // // ---- test ----
-    // printf("\n第 %u 次数值\n", i);
-
-    // 获取 ct 的值
-    ct_pad.val[i] = ct->val[i];
-
-    // 构造 sk 转置 sk_transpose
-    // 获取 sk 转置的首行索引
-    // 𝜑(A)' = a0 + ar-1X + ar-2X^2 ...
-    for(uint8_t i_DV = 0; i_DV < DV; i_DV++)
-    {
-      if(sk->wlist[i].val[i_DV] != 0)
-      {
-        sk_transpose.wlist[i].val[i_DV] = R_BITS - sk->wlist[i].val[i_DV];
-      }
-      else
-      {
-        sk_transpose.wlist[i].val[i_DV] = sk->wlist[i].val[i_DV];
-      }
-    }
-
-    // Initialize to zero
-    memset((uint64_t *)&pad_sk_transpose[i], 0, (R_BITS + 7) >> 3);
-
-    // // ---- test ----
-    // for(uint16_t i_test = 0; i_test < R_SIZE; i_test++){
-    //   printf("\n%4x", pad_sk_transpose[i].val.raw[i]);
-    // }
-
-    // 利用 secure_set_bits() 函数将填充索引位置置为 1
-    secure_set_bits((uint64_t *)&pad_sk_transpose[i], sk_transpose.wlist[i].val,
-                    sizeof(pad_sk_transpose[i]), DV);
-
-    sk_transpose.bin[i] = pad_sk_transpose[i].val;
-
-    // // ---- test ---- 输出 h 转置后的重量索引
-    // printf(" h 转置后的第一行重量索引: \n");
-    // for(uint8_t i_test = 0; i_test < DV; i_test++)
-    // {
-    //   printf("\n%u", sk_transpose.wlist[i].val[i_test]);
-    // }
-
-    // // ---- test ---- 输出 h 的 bin
-    // print("\nh_transpose: \n", (uint64_t *)&sk_transpose.bin[i], R_BITS);
-
-    // 从 sk_transpose 中获取 h 第一行的 bin
-    // 复制 1473 个字节到 qw 的后 185 个 64 位整型中
-    memcpy((uint8_t *)&h.val[i].qw[R_QW], sk_transpose.bin[i].raw, R_SIZE);
-
-    // // ---- test ----
-    // for(uint16_t i_test = 0; i_test < 370; i_test++){
-    //   printf("第 %u 个未复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
-    // }
-
-    // 对 h 复制一次
-    dup_two(&h.val[i]);
-
-    // // ---- test ----
-    // for(uint16_t i_test = 0; i_test < 370; i_test++){
-    //   printf("第 %u 个复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
-    // }
-
-    // 去除 c 中的未知数位，将 black_or_gray_e 取反后与 c 做与操作
-    GUARD(negate_and(ct_remove_BG.val[i].raw, black_or_gray_e.val[i].raw,
-                     ct_pad.val[i].raw, R_SIZE));
-
-    // ---- test ---- 打印 black_or_gray_e
-    print("\nblack_or_gray_e: \n", (uint64_t *)black_or_gray_e.val[i].raw,
-          R_BITS);
-
-    // 将 black_or_gray_e 传递出去比较是否包含所有错误向量
-    black_or_gray_e_out->val[i] = black_or_gray_e.val[i];
-
-    // ---- test ---- 打印 ct_remove_BG
-    print("\nct_remove_BG: \n", (uint64_t *)ct_remove_BG.val[i].raw, R_BITS);
-
-    // 对方程组未知数进行构建，两次循环的索引(从 1 开始)都存储于 equeations 中
-    for(uint16_t i_eq = 0; i_eq < R_BITS; i_eq++)
-    {
-      // 将当前 h 与 black_or_gray_e 与运算
-      // h 的有效位是 [185]-[369]
-      GUARD(and_index(equations[i_eq], (uint8_t *)&eq_index,
-                      black_or_gray_e.val[i].raw, (uint8_t *)&h.val[i].qw[R_QW],
-                      R_SIZE, i, i_eq));
-
-      // // ---- test ----
-      // printf("第 %d 次循环----", i_eq);
-      // print("\n----循环 h----:", (uint64_t *)&h.val[i].qw[R_QW], R_BITS);
-
-      // 对 H 进行 1 bit 循环右移位
-      rotate_right_one(&h.val[i], &h.val[i]);
-    }
-  }
-
-  // 将 ct_remove_BG 和 H 相乘, 使用 gf2x_mod_mul(), 得到结果 constant_term
-  // 这里计算方式与 compute_syndrome() 计算方式一致, 可调用此函数构建
-  GUARD(compute_syndrome(&pad_constant_term, &ct_remove_BG, sk));
-
-  // ---- test ---- 打印 pad_constant_term 的值
-  print("\npad_constant_term: \n", (uint64_t *)pad_constant_term.qw, R_BITS);
-
-  // 将增广常数 pad_constant_term 赋值给 equations[i][EQ_COLUMN]
-  term_to_equations(equations, (syndrome_t *)&pad_constant_term);
-
-  // // -- test -- 输出 equations 的值, 并保存到 data_1.txt 中
-  // FILE *fp;
-  // fp = fopen("data_1.txt", "a");
-  // for(uint16_t i = 0; i < 11779; i++)
-  // {
-  //   // if(equations[i][0] == 0)
-  //   // {
-  //   //   continue;
-  //   // }
-  //   for(uint8_t j = 0; j < EQ_COLUMN; j++)
-  //   {
-  //     if(j == (EQ_COLUMN-1))
-  //     {
-  //       fprintf(fp, "%u\n", equations[i][j]);
-  //       continue;
-  //     }
-  //     fprintf(fp, "%u,", equations[i][j]);
-  //     // if(equations[i][j] != 0)
-  //     // {
-  //     //   printf("%u  ", equations[i][j]);
-  //     // }
-  //   }
-  //   // printf("\n");
-  // }
-  // fclose(fp);
-  double end_construct = clock();
-  printf("-- 方程组构建时间 --: %lfs\n",
-         ((double)(end_construct - start_construct) / CLOCKS_PER_SEC));
-
-  // 计算求解的 未知数 总个数(black_or_gray_e 的重量)
-  uint16_t x_weight = r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
-                      r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw);
-
-  // // ---- test ---- 查看需要求解的未知数的个数
-  // printf("当前德尔塔: %u 需要求解未知数的个数: %u", delat, x_weight);
-
-  // 生成一个向量用来对应不同未知数
-  uint16_t x_arr[x_weight];
-  for(uint16_t i = 0; i < x_weight; i++)
-  {
-    x_arr[i] = 0;
-  }
-  uint16_t x_weight_count = 0;
-  // 记录所有 0 行,这里从 1 开始，避免0的问题
-  // uint16_t x_0[R_BITS] = {0};
-  // uint16_t x_0_index   = 0;
-
-  uint8_t flag_x = 0;
-  // 将 equations 中的所有未知数遍历获取到 x0-xall
-  for(uint16_t i = 0; i < R_BITS; i++)
-  {
-    flag_x = 0;
-    if(equations[i][0] == 0)
-    {
-      // x_0[x_0_index] = i + 1;
-      // x_0_index += 1;
-      continue;
-    }
-    for(uint16_t j = 0; j < EQ_COLUMN - 1; j++)
-    {
-      if(equations[i][j] == 0)
-      {
-        break;
-      }
-      for(uint16_t k = 0; k < x_weight_count; k++)
-      {
-        if(x_arr[k] == equations[i][j])
-        {
-          flag_x = 1;
-          break;
-        }
-      }
-      if(flag_x == 1)
-      {
-        flag_x = 0;
-        continue;
-      }
-      x_arr[x_weight_count] = equations[i][j];
-      x_weight_count += 1;
-      flag_x = 0;
-    }
-  }
-
-  // 对 x_arr 排序
-  sort(x_arr, x_weight_count);
-
-  // 构建高斯消元方程组
-  uint8_t equations_guss[R_BITS][x_weight + 1];
-  // 将方程组置为0
-  for(uint16_t i = 0; i < R_BITS; i++)
-  {
-    for(uint16_t j = 0; j < x_weight + 1; j++)
-    {
-      equations_guss[i][j] = 0;
-    }
-  }
-
-  uint16_t guss_x = 0;
-  for(uint16_t i = 0; i < R_BITS; i++)
-  {
-    if(equations[i][0] == 0)
-    {
-      continue;
-    }
-    for(uint16_t j = 0; j < EQ_COLUMN - 1; j++)
-    {
-      if(equations[i][j] == 0)
-      {
-        equations_guss[guss_x][x_weight] = equations[i][EQ_COLUMN - 1];
-        break;
-      }
-      for(uint16_t k = 0; k < x_weight_count; k++)
-      {
-        if(x_arr[k] == equations[i][j])
-        {
-          equations_guss[guss_x][k] = 1;
-          break;
-        }
-      }
-    }
-    guss_x += 1;
-  }
-
-  printf("方程行数: %u\n", guss_x);
-
-  uint16_t flag_slove_x = 0;
-  for(uint16_t i_iter_all = 0; i_iter_all < R_BITS; i_iter_all++)
-  {
-    printf("i_iter_all: %u\n", i_iter_all);
-    uint16_t eq_tmp[x_weight + 1];
-    uint16_t i_tmp_ex = 0;
-    // 将 equations_guss 化简为倒三角
-    for(uint16_t j = 0; j < x_weight; j++)
-    {
-      for(uint16_t i = i_tmp_ex; i < guss_x; i++)
-      {
-        if(equations_guss[i][j] == 1)
-        {
-          for(uint16_t k = 0; k < x_weight + 1; k++)
-          {
-            eq_tmp[k]                   = equations_guss[i_tmp_ex][k];
-            equations_guss[i_tmp_ex][k] = equations_guss[i][k];
-            equations_guss[i][k]        = eq_tmp[k];
-          }
-          i_tmp_ex += 1;
-        }
-      }
-    }
-
-    // 检查是否可解
-    for(uint16_t i = 0; i < x_weight; i++)
-    {
-      if(flag_slove_x == 1)
-      {
-        break;
-      }
-
-      if(i == 0)
-      {
-        if(equations_guss[i][i] == 1)
-        {
-          continue;
-        }
-        else
-        {
-          flag_slove_x = 1;
-          continue;
-        }
-      }
-
-      if(equations_guss[i][i] == 1)
-      {
-        for(int j = i - 1; j >= 0; j--)
-        {
-          if(equations_guss[i][j] == 1)
-          {
-            flag_slove_x = 1;
-            break;
-          }
-        }
-      }else{
-        flag_slove_x = 1;
-        break;
-      }
-    }
-
-    if(flag_slove_x == 1)
-    {
-      flag_slove_x = 0;
-    }
-    else
-    {
-      printf("方程可解!\n");
-      break;
-    }
-
-    // 尝试化简为上三角
-    uint16_t i_tmp_inver = 1;
-    for(uint16_t j_inver = 0; j_inver < x_weight; j_inver++)
-    {
-      for(uint16_t i_inver = i_tmp_inver; i_inver < guss_x; i_inver++)
-      {
-        if((equations_guss[i_inver][j_inver] &
-            equations_guss[i_inver - 1][j_inver]) == 1)
-        {
-          for(uint16_t k_inver = 0; k_inver < x_weight + 1; k_inver++)
-          {
-            equations_guss[i_inver - 1][k_inver] =
-                (equations_guss[i_inver - 1][k_inver] +
-                 equations_guss[i_inver][k_inver]) %
-                2;
-          }
-          i_tmp_inver += 1;
-          continue;
-        }
-        if((equations_guss[i_inver][j_inver] |
-            equations_guss[i_inver - 1][j_inver]) != 1)
-        {
-          break;
-        }
-        i_tmp_inver += 1;
-        break;
-      }
-    }
-  }
-
-  // printf("当前行是否有问题:\n");
-  // uint16_t index_test = 0;
-  // // 判断是否可解
-  // for(uint16_t i = 0; i < guss_x; i++)
-  // {
-  //   if(equations_guss[i][index_test] == 1)
-  //   {
-  //     continue;
-  //   }
-  //   index_test += 1;
-  //   if(equations_guss[i][index_test] != 1)
-  //   {
-  //     printf("当前 %u 行有问题, 无解\n", i);
-  //     break;
-  //   }
-  // }
-  // if(index_test + 1 != x_weight)
-  // {
-  //   printf("有问题, 无解\n");
-  // }
-
-  // 倒着求解
-  uint8_t  b_x[x_weight];
-  uint16_t b_x_index = x_weight - 1;
-  memset(b_x, 0, sizeof(b_x));
-  for(int i = x_weight - 1; i >= 0; i--)
-  {
-    if(b_x_index == x_weight - 1)
-    {
-      b_x[b_x_index] = equations_guss[i][x_weight];
-      // printf("第 %u 行, b_x_index: %u, b_x[b_x_index]: %u\n", i, b_x_index,
-      //        b_x[b_x_index]);
-      b_x_index = b_x_index - 1;
-      continue;
-    }
-
-    if(equations_guss[i][b_x_index] == 0)
-    {
-      continue;
-    }
-
-    for(uint16_t j = b_x_index + 1; j < x_weight; j++)
-    {
-      if(equations_guss[i][j] == 1)
-      {
-        equations_guss[i][x_weight] = (equations_guss[i][x_weight] + b_x[j]) % 2;
-      }
-    }
-    b_x[b_x_index] = equations_guss[i][x_weight];
-    // printf("第 %u 行, b_x_index: %u, b_x[b_x_index]: %u\n", i, b_x_index,
-    //        b_x[b_x_index]);
-    b_x_index = b_x_index - 1;
-  }
-
-  // for(uint16_t i = 0; i < x_weight; i++)
-  // {
-  //   printf("%u: %u\n", i, b_x[i]);
-  // }
-
-  // if(delat == 4)
-  // {
-  //   // 将方程写入文件
-  //   FILE *fp_eq;
-  //   fp_eq = fopen("eq_guss.txt", "a");
-  //   for(uint16_t i = 0; i < guss_x; i++)
-  //   {
-  //     for(uint16_t j = 0; j < x_weight + 1; j++)
-  //     {
-  //       fprintf(fp_eq, "%u ", equations_guss[i][j]);
-  //     }
-  //     fprintf(fp_eq, "\n");
-  //   }
-  //   fclose(fp_eq);
-  // }
-
-  // for(uint16_t i = 0; i < x_weight_count; i++)
-  // {
-  //   printf("第 %u 个 %u\n", i, x_arr[i]);
-  // }
-
-  // 构造高斯消元解数组
-  uint16_t b[N] = {0};
-  for(uint16_t i = 0; i<x_weight;i++){
-    if(b_x[i] == 0){
-      b[x_arr[i] - 1] = 2;
-    }else{
-      b[x_arr[i] - 1] = b_x[i];
-    }
-
-  }
-
-  // 解方程计时
-  double start_solve = clock();
-  // // --------------------- 2.解方程函数 ---------------------
-  // 结果被保存在 b[23558] 中, 0 被保存为 2, 1 被保存为 1
-  // uint16_t b[N] = {0};
-  // solving_equations((uint16_t *)&b, equations, x_weight);
-
-  // 检验解方程的正确性, 将 ct 对应位置放上解方程结果 b, 还原 fm 加真实 e 和 ct
-  // 比较
-  ct_verify.val[0] = ct->val[0];
-  ct_verify.val[1] = ct->val[1];
-  solving_equations_mf((ct_t *)&ct_verify, b);
-
-  double end_solve = clock();
-  printf("-- 解方程时间 --: %lfs\n",
-         ((double)(end_solve - start_solve) / CLOCKS_PER_SEC));
-
-  // 将 ct_verify = mf 和真实 e 异或后再异或 ct 检查重量
-  uint8_t verify_weight[2] = {0};
-  for(uint8_t i = 0; i < N0; i++)
-  {
-    GUARD(gf2x_add((uint8_t *)&ct_verify.val[i].raw, ct_verify.val[i].raw,
-                   R_e->val[i].raw, R_SIZE));
-    GUARD(gf2x_add((uint8_t *)&ct_verify.val[i].raw, ct_verify.val[i].raw,
-                   ct->val[i].raw, R_SIZE));
-    verify_weight[i] = r_bits_vector_weight((r_t *)ct_verify.val[i].raw);
-  }
-  print("ct_verify.val[0]: ", (uint64_t *)ct_verify.val[0].raw, R_BITS);
-  print("ct_verify.val[1]: ", (uint64_t *)ct_verify.val[1].raw, R_BITS);
-
-  if(verify_weight[0] || verify_weight[1] != 0)
-  {
-    printf("DELAT: %d 需求解未知数: %u 解方程失败\n", delat, x_weight);
-    FILE *fp_2;
-    fp_2 = fopen("weight_bad.txt", "a");
-    fprintf(fp_2, "DELAT: %d 当前未知数: %u 解方程失败\n", delat, x_weight);
-    // fprintf(fp_2, "v_0 重量为: %u\n", verify_weight_0);
-    // fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
-    fclose(fp_2);
-    *flag = 1;
-  }
-  else
-  {
-    printf("DELAT: %d 需求解未知数: %u\n", delat, x_weight);
-  }
-
   // =================================================================
 
   // // ---- test ---- 打印当前 e 查看译码结果
@@ -1488,6 +1012,15 @@ decode(OUT split_e_t       *black_or_gray_e_out,
 
   // printf("\n");
 
+  for(uint16_t i = 0; i < N0; i++)
+  {
+    // 将 black_or_gray_e 传递出去比较是否包含所有错误向量
+    black_or_gray_e_out->val[i] = black_or_gray_e.val[i];
+  }
+
+  // 创建失败 flag
+  uint16_t flag_BG = 1;
+
   //  26: if (wt(s) != 0) then
   //  27:     return ⊥(ERROR)
   if(r_bits_vector_weight((r_t *)s.qw) > 0)
@@ -1498,11 +1031,496 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     fclose(fp_3);
     *flag = 1;
     DMSG("s 重量不为 0...");
-    BIKE_ERROR(E_DECODING_FAILURE);
+    flag_BG = 0;
   }
 
-  // // 由于存在全局变量，将 eq_index 重置为 0
-  // memset(eq_index, 0, R_BITS);
+  if(flag_BG == 0)
+  {
+
+    // ================> 增加方程组求解算法(当 s 不为 0) <================
+    // =================================================================
+    // --------------------- 1.构建方程组 ---------------------
+
+    // // 构建方程组计时
+    // double start_construct = clock();
+
+    for(uint32_t i = 0; i < N0; i++)
+    {
+      // // ---- test ----
+      // printf("\n第 %u 次数值\n", i);
+
+      // 获取 ct 的值
+      ct_pad.val[i] = ct->val[i];
+
+      // 构造 sk 转置 sk_transpose
+      // 获取 sk 转置的首行索引
+      // 𝜑(A)' = a0 + ar-1X + ar-2X^2 ...
+      for(uint8_t i_DV = 0; i_DV < DV; i_DV++)
+      {
+        if(sk->wlist[i].val[i_DV] != 0)
+        {
+          sk_transpose.wlist[i].val[i_DV] = R_BITS - sk->wlist[i].val[i_DV];
+        }
+        else
+        {
+          sk_transpose.wlist[i].val[i_DV] = sk->wlist[i].val[i_DV];
+        }
+      }
+
+      // Initialize to zero
+      memset((uint64_t *)&pad_sk_transpose[i], 0, (R_BITS + 7) >> 3);
+
+      // // ---- test ----
+      // for(uint16_t i_test = 0; i_test < R_SIZE; i_test++){
+      //   printf("\n%4x", pad_sk_transpose[i].val.raw[i]);
+      // }
+
+      // 利用 secure_set_bits() 函数将填充索引位置置为 1
+      secure_set_bits((uint64_t *)&pad_sk_transpose[i], sk_transpose.wlist[i].val,
+                      sizeof(pad_sk_transpose[i]), DV);
+
+      sk_transpose.bin[i] = pad_sk_transpose[i].val;
+
+      // // ---- test ---- 输出 h 转置后的重量索引
+      // printf(" h 转置后的第一行重量索引: \n");
+      // for(uint8_t i_test = 0; i_test < DV; i_test++)
+      // {
+      //   printf("\n%u", sk_transpose.wlist[i].val[i_test]);
+      // }
+
+      // // ---- test ---- 输出 h 的 bin
+      // print("\nh_transpose: \n", (uint64_t *)&sk_transpose.bin[i], R_BITS);
+
+      // 从 sk_transpose 中获取 h 第一行的 bin
+      // 复制 1473 个字节到 qw 的后 185 个 64 位整型中
+      memcpy((uint8_t *)&h.val[i].qw[R_QW], sk_transpose.bin[i].raw, R_SIZE);
+
+      // // ---- test ----
+      // for(uint16_t i_test = 0; i_test < 370; i_test++){
+      //   printf("第 %u 个未复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
+      // }
+
+      // 对 h 复制一次
+      dup_two(&h.val[i]);
+
+      // // ---- test ----
+      // for(uint16_t i_test = 0; i_test < 370; i_test++){
+      //   printf("第 %u 个复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
+      // }
+
+      // 去除 c 中的未知数位，将 black_or_gray_e 取反后与 c 做与操作
+      GUARD(negate_and(ct_remove_BG.val[i].raw, black_or_gray_e.val[i].raw,
+                       ct_pad.val[i].raw, R_SIZE));
+
+      // ---- test ---- 打印 black_or_gray_e
+      print("\nblack_or_gray_e: \n", (uint64_t *)black_or_gray_e.val[i].raw,
+            R_BITS);
+
+      // // 将 black_or_gray_e 传递出去比较是否包含所有错误向量
+      // black_or_gray_e_out->val[i] = black_or_gray_e.val[i];
+
+      // ---- test ---- 打印 ct_remove_BG
+      print("\nct_remove_BG: \n", (uint64_t *)ct_remove_BG.val[i].raw, R_BITS);
+
+      // 对方程组未知数进行构建，两次循环的索引(从 1 开始)都存储于 equeations 中
+      for(uint16_t i_eq = 0; i_eq < R_BITS; i_eq++)
+      {
+        // 将当前 h 与 black_or_gray_e 与运算
+        // h 的有效位是 [185]-[369]
+        GUARD(and_index(equations[i_eq], (uint8_t *)&eq_index,
+                        black_or_gray_e.val[i].raw, (uint8_t *)&h.val[i].qw[R_QW],
+                        R_SIZE, i, i_eq));
+
+        // // ---- test ----
+        // printf("第 %d 次循环----", i_eq);
+        // print("\n----循环 h----:", (uint64_t *)&h.val[i].qw[R_QW], R_BITS);
+
+        // 对 H 进行 1 bit 循环右移位
+        rotate_right_one(&h.val[i], &h.val[i]);
+      }
+    }
+
+    // 将 ct_remove_BG 和 H 相乘, 使用 gf2x_mod_mul(), 得到结果 constant_term
+    // 这里计算方式与 compute_syndrome() 计算方式一致, 可调用此函数构建
+    GUARD(compute_syndrome(&pad_constant_term, &ct_remove_BG, sk));
+
+    // ---- test ---- 打印 pad_constant_term 的值
+    print("\npad_constant_term: \n", (uint64_t *)pad_constant_term.qw, R_BITS);
+
+    // 将增广常数 pad_constant_term 赋值给 equations[i][EQ_COLUMN]
+    term_to_equations(equations, (syndrome_t *)&pad_constant_term);
+
+    // // -- test -- 输出 equations 的值, 并保存到 data_1.txt 中
+    // FILE *fp;
+    // fp = fopen("data_1.txt", "a");
+    // for(uint16_t i = 0; i < 11779; i++)
+    // {
+    //   // if(equations[i][0] == 0)
+    //   // {
+    //   //   continue;
+    //   // }
+    //   for(uint8_t j = 0; j < EQ_COLUMN; j++)
+    //   {
+    //     if(j == (EQ_COLUMN-1))
+    //     {
+    //       fprintf(fp, "%u\n", equations[i][j]);
+    //       continue;
+    //     }
+    //     fprintf(fp, "%u,", equations[i][j]);
+    //     // if(equations[i][j] != 0)
+    //     // {
+    //     //   printf("%u  ", equations[i][j]);
+    //     // }
+    //   }
+    //   // printf("\n");
+    // }
+    // fclose(fp);
+    // double end_construct = clock();
+    // printf("-- 方程组构建时间 --: %lfs\n",
+    //        ((double)(end_construct - start_construct) / CLOCKS_PER_SEC));
+
+    // 计算求解的 未知数 总个数(black_or_gray_e 的重量)
+    uint16_t x_weight = r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
+                        r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw);
+
+    // // ---- test ---- 查看需要求解的未知数的个数
+    // printf("当前德尔塔: %u 需要求解未知数的个数: %u", delat, x_weight);
+
+    // 生成一个向量用来对应不同未知数
+    uint16_t x_arr[x_weight];
+    for(uint16_t i = 0; i < x_weight; i++)
+    {
+      x_arr[i] = 0;
+    }
+    uint16_t x_weight_count = 0;
+    // 记录所有 0 行,这里从 1 开始，避免0的问题
+    // uint16_t x_0[R_BITS] = {0};
+    // uint16_t x_0_index   = 0;
+
+    uint8_t flag_x = 0;
+    // 将 equations 中的所有未知数遍历获取到 x0-xall
+    for(uint16_t i = 0; i < R_BITS; i++)
+    {
+      flag_x = 0;
+      if(equations[i][0] == 0)
+      {
+        // x_0[x_0_index] = i + 1;
+        // x_0_index += 1;
+        continue;
+      }
+      for(uint16_t j = 0; j < EQ_COLUMN - 1; j++)
+      {
+        if(equations[i][j] == 0)
+        {
+          break;
+        }
+        for(uint16_t k = 0; k < x_weight_count; k++)
+        {
+          if(x_arr[k] == equations[i][j])
+          {
+            flag_x = 1;
+            break;
+          }
+        }
+        if(flag_x == 1)
+        {
+          flag_x = 0;
+          continue;
+        }
+        x_arr[x_weight_count] = equations[i][j];
+        x_weight_count += 1;
+        flag_x = 0;
+      }
+    }
+
+    // 对 x_arr 排序
+    sort(x_arr, x_weight_count);
+
+    // 构建高斯消元方程组
+    uint8_t equations_guss[R_BITS][x_weight + 1];
+    // 将方程组置为0
+    for(uint16_t i = 0; i < R_BITS; i++)
+    {
+      for(uint16_t j = 0; j < x_weight + 1; j++)
+      {
+        equations_guss[i][j] = 0;
+      }
+    }
+
+    uint16_t guss_x = 0;
+    for(uint16_t i = 0; i < R_BITS; i++)
+    {
+      if(equations[i][0] == 0)
+      {
+        continue;
+      }
+      for(uint16_t j = 0; j < EQ_COLUMN - 1; j++)
+      {
+        if(equations[i][j] == 0)
+        {
+          equations_guss[guss_x][x_weight] = equations[i][EQ_COLUMN - 1];
+          break;
+        }
+        for(uint16_t k = 0; k < x_weight_count; k++)
+        {
+          if(x_arr[k] == equations[i][j])
+          {
+            equations_guss[guss_x][k] = 1;
+            break;
+          }
+        }
+      }
+      guss_x += 1;
+    }
+
+    printf("方程行数: %u\n", guss_x);
+
+    uint16_t flag_slove_x = 0;
+    for(uint16_t i_iter_all = 0; i_iter_all < R_BITS; i_iter_all++)
+    {
+      // printf("i_iter_all: %u\n", i_iter_all);
+      uint16_t eq_tmp[x_weight + 1];
+      uint16_t i_tmp_ex = 0;
+      // 将 equations_guss 化简为倒三角
+      for(uint16_t j = 0; j < x_weight; j++)
+      {
+        for(uint16_t i = i_tmp_ex; i < guss_x; i++)
+        {
+          if(equations_guss[i][j] == 1)
+          {
+            for(uint16_t k = 0; k < x_weight + 1; k++)
+            {
+              eq_tmp[k]                   = equations_guss[i_tmp_ex][k];
+              equations_guss[i_tmp_ex][k] = equations_guss[i][k];
+              equations_guss[i][k]        = eq_tmp[k];
+            }
+            i_tmp_ex += 1;
+          }
+        }
+      }
+
+      // 检查是否可解
+      for(uint16_t i = 0; i < x_weight; i++)
+      {
+        if(flag_slove_x == 1)
+        {
+          break;
+        }
+
+        if(i == 0)
+        {
+          if(equations_guss[i][i] == 1)
+          {
+            continue;
+          }
+          else
+          {
+            flag_slove_x = 1;
+            continue;
+          }
+        }
+
+        if(equations_guss[i][i] == 1)
+        {
+          for(int j = i - 1; j >= 0; j--)
+          {
+            if(equations_guss[i][j] == 1)
+            {
+              flag_slove_x = 1;
+              break;
+            }
+          }
+        }
+        else
+        {
+          flag_slove_x = 1;
+          break;
+        }
+      }
+
+      if(flag_slove_x == 1)
+      {
+        flag_slove_x = 0;
+      }
+      else
+      {
+        // printf("方程可解!\n");
+        break;
+      }
+
+      // 尝试化简为上三角
+      uint16_t i_tmp_inver = 1;
+      for(uint16_t j_inver = 0; j_inver < x_weight; j_inver++)
+      {
+        for(uint16_t i_inver = i_tmp_inver; i_inver < guss_x; i_inver++)
+        {
+          if((equations_guss[i_inver][j_inver] &
+              equations_guss[i_inver - 1][j_inver]) == 1)
+          {
+            for(uint16_t k_inver = 0; k_inver < x_weight + 1; k_inver++)
+            {
+              equations_guss[i_inver - 1][k_inver] =
+                  (equations_guss[i_inver - 1][k_inver] +
+                   equations_guss[i_inver][k_inver]) %
+                  2;
+            }
+            i_tmp_inver += 1;
+            continue;
+          }
+          if((equations_guss[i_inver][j_inver] |
+              equations_guss[i_inver - 1][j_inver]) != 1)
+          {
+            break;
+          }
+          i_tmp_inver += 1;
+          break;
+        }
+      }
+    }
+
+    // printf("当前行是否有问题:\n");
+    // uint16_t index_test = 0;
+    // // 判断是否可解
+    // for(uint16_t i = 0; i < guss_x; i++)
+    // {
+    //   if(equations_guss[i][index_test] == 1)
+    //   {
+    //     continue;
+    //   }
+    //   index_test += 1;
+    //   if(equations_guss[i][index_test] != 1)
+    //   {
+    //     printf("当前 %u 行有问题, 无解\n", i);
+    //     break;
+    //   }
+    // }
+    // if(index_test + 1 != x_weight)
+    // {
+    //   printf("有问题, 无解\n");
+    // }
+
+    // 倒着求解
+    uint8_t  b_x[x_weight];
+    uint16_t b_x_index = x_weight - 1;
+    memset(b_x, 0, sizeof(b_x));
+    for(int i = x_weight - 1; i >= 0; i--)
+    {
+      if(b_x_index == x_weight - 1)
+      {
+        b_x[b_x_index] = equations_guss[i][x_weight];
+        // printf("第 %u 行, b_x_index: %u, b_x[b_x_index]: %u\n", i, b_x_index,
+        //        b_x[b_x_index]);
+        b_x_index = b_x_index - 1;
+        continue;
+      }
+
+      if(equations_guss[i][b_x_index] == 0)
+      {
+        continue;
+      }
+
+      for(uint16_t j = b_x_index + 1; j < x_weight; j++)
+      {
+        if(equations_guss[i][j] == 1)
+        {
+          equations_guss[i][x_weight] =
+              (equations_guss[i][x_weight] + b_x[j]) % 2;
+        }
+      }
+      b_x[b_x_index] = equations_guss[i][x_weight];
+      // printf("第 %u 行, b_x_index: %u, b_x[b_x_index]: %u\n", i, b_x_index,
+      //        b_x[b_x_index]);
+      b_x_index = b_x_index - 1;
+    }
+
+    // for(uint16_t i = 0; i < x_weight; i++)
+    // {
+    //   printf("%u: %u\n", i, b_x[i]);
+    // }
+
+    // if(delat == 4)
+    // {
+    //   // 将方程写入文件
+    //   FILE *fp_eq;
+    //   fp_eq = fopen("eq_guss.txt", "a");
+    //   for(uint16_t i = 0; i < guss_x; i++)
+    //   {
+    //     for(uint16_t j = 0; j < x_weight + 1; j++)
+    //     {
+    //       fprintf(fp_eq, "%u ", equations_guss[i][j]);
+    //     }
+    //     fprintf(fp_eq, "\n");
+    //   }
+    //   fclose(fp_eq);
+    // }
+
+    // for(uint16_t i = 0; i < x_weight_count; i++)
+    // {
+    //   printf("第 %u 个 %u\n", i, x_arr[i]);
+    // }
+
+    // 构造高斯消元解数组
+    uint16_t b[N] = {0};
+    for(uint16_t i = 0; i < x_weight; i++)
+    {
+      if(b_x[i] == 0)
+      {
+        b[x_arr[i] - 1] = 2;
+      }
+      else
+      {
+        b[x_arr[i] - 1] = b_x[i];
+      }
+    }
+
+    // // 解方程计时
+    // double start_solve = clock();
+    // // --------------------- 2.解方程函数 ---------------------
+    // 结果被保存在 b[23558] 中, 0 被保存为 2, 1 被保存为 1
+    // uint16_t b[N] = {0};
+    // solving_equations((uint16_t *)&b, equations, x_weight);
+
+    // 检验解方程的正确性, 将 ct 对应位置放上解方程结果 b, 还原 fm 加真实 e 和 ct
+    // 比较
+    ct_verify.val[0] = ct->val[0];
+    ct_verify.val[1] = ct->val[1];
+    solving_equations_mf((ct_t *)&ct_verify, b);
+
+    // double end_solve = clock();
+    // printf("-- 解方程时间 --: %lfs\n",
+    //        ((double)(end_solve - start_solve) / CLOCKS_PER_SEC));
+
+    // 将 ct_verify = mf 和真实 e 异或后再异或 ct 检查重量
+    uint8_t verify_weight[2] = {0};
+    for(uint8_t i = 0; i < N0; i++)
+    {
+      GUARD(gf2x_add((uint8_t *)&ct_verify.val[i].raw, ct_verify.val[i].raw,
+                     R_e->val[i].raw, R_SIZE));
+      GUARD(gf2x_add((uint8_t *)&ct_verify.val[i].raw, ct_verify.val[i].raw,
+                     ct->val[i].raw, R_SIZE));
+      verify_weight[i] = r_bits_vector_weight((r_t *)ct_verify.val[i].raw);
+    }
+    print("ct_verify.val[0]: ", (uint64_t *)ct_verify.val[0].raw, R_BITS);
+    print("ct_verify.val[1]: ", (uint64_t *)ct_verify.val[1].raw, R_BITS);
+
+    if(verify_weight[0] || verify_weight[1] != 0)
+    {
+      printf("DELAT: %d 需求解未知数: %u 解方程失败\n", delat, x_weight);
+      FILE *fp_2;
+      fp_2 = fopen("weight_bad.txt", "a");
+      fprintf(fp_2, "DELAT: %d 当前未知数: %u 解方程失败\n", delat, x_weight);
+      // fprintf(fp_2, "v_0 重量为: %u\n", verify_weight_0);
+      // fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
+      fclose(fp_2);
+      *flag = 1;
+    }
+    else
+    {
+      printf("DELAT: %d 需求解未知数: %u\n", delat, x_weight);
+    }
+
+    BIKE_ERROR(E_DECODING_FAILURE);
+  }
 
   return SUCCESS;
 }
