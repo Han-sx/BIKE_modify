@@ -3,6 +3,8 @@ export OBJ_DIR = ${ROOT}/obj/
 
 include inc.mk
 
+LIST = 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64
+
 BIN_DIR = ./bin/
 TARGET := $(BIN_DIR)/main
 
@@ -56,3 +58,27 @@ pretty:
 tidy:
 	clang-tidy-9 ${SRC_FOR_TIDY} -p $(ROOT) --fix-errors --format-style=file -- ${CFLAGS}
 
+run:
+	cd bin;\
+	for i in $(LIST); do \
+		mkdir $$i;\
+		cp main $$i;\
+		cd $$i;\
+		nohup ./main & \
+		cd ..;\
+	done
+
+copy:
+	mkdir all;
+	for i in $(LIST); do \
+		cd $$i;\
+		cp iter_data.txt ../all;\
+		cd ..;\
+		cd all;\
+		mv iter_data.txt iter_data$$i;\
+		cd ..;\
+	done
+
+cleans:
+	cd bin;\
+	rm -rf all 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64

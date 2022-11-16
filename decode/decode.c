@@ -1051,7 +1051,7 @@ decode(OUT split_e_t       *e,
     // 记录当前的 gray_e1
     fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
 
-    // 将 p_p 加入尾部, 并断行
+    // 将 p_p,x 加入尾部, 并断行
     FILE *fp_7;
     fp_7 = fopen("iter_data.txt", "a");
     fprintf(fp_7, "%f %f", p_p, x);
@@ -1300,14 +1300,41 @@ decode(OUT split_e_t       *e,
     fprintf(fp_3, "DELAT: %d 黑灰译码失败\n", delat);
     fclose(fp_3);
     // *flag = 1;
+
+    // 如果出错 就把错误数据写入文件
+    int ch;
+    FILE *sfp;
+    FILE *dfp;
+    char sname[FILENAME_MAX] = "iter_data.txt";
+    char dname[FILENAME_MAX] = "iter_data_all.txt";
+    
+    if((sfp = fopen(sname, "r")) == NULL){
+      printf("\a文件打开失败。\n");
+    } else {
+      if ((dfp = fopen(dname, "a")) == NULL){
+        printf("\a文件打开失败。\n");
+      }else {
+        while ((ch = fgetc(sfp)) != EOF){
+          fputc(ch, dfp);
+        }
+        fclose(dfp);
+      }
+      fclose(sfp);
+    }
+
+    // 译码失败复制后也删除文件
+    if(remove("iter_data.txt") == 0)
+    {
+    }    
+
     DMSG("s 重量不为 0...");
     BIKE_ERROR(E_DECODING_FAILURE);
   }
 
-  // // 译码成功则删除文件
-  // if(remove("iter_data.txt") == 0)
-  // {
-  // }
+  // 译码成功则删除文件
+  if(remove("iter_data.txt") == 0)
+  {
+  }
 
   // // ---- test ---- fprintf_LE 测试
   // fprintf_LE((const uint64_t *)R_e, R_BITS);
