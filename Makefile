@@ -64,18 +64,22 @@ run:
 		mkdir $$i;\
 		cp main $$i;\
 		cd $$i;\
-		nohup ./main & \
+		nohup ./main &\
 		cd ..;\
+		sleep .1;\
+		echo "第 $$i 个进程生成中...";\
 	done
+	@echo "---运行完成, 所有程序将在后台执行---"
 
 copy:
-	mkdir all;
+	cd bin;\
+	mkdir all;\
 	for i in $(LIST); do \
 		cd $$i;\
-		cp iter_data.txt ../all;\
+		cp iter_data_all.txt ../all;\
 		cd ..;\
 		cd all;\
-		mv iter_data.txt iter_data$$i;\
+		mv iter_data_all.txt iter_data_all_$$i;\
 		cd ..;\
 	done
 

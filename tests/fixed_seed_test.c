@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 ////////////////////////////////////////////////////////////////
 //                 Main function for testing
@@ -35,7 +36,7 @@ main()
 #ifdef FIXED_SEED
   srand(0);
 #else
-  srand(time(NULL));
+  srand(time(NULL) + getpid());
 #endif
 
   uint8_t sk[sizeof(sk_t)]    = {0}; // private-key: (h0, h1)
@@ -48,7 +49,7 @@ main()
   {
     int res = 0;
 
-    printf("Code test: %ld\n",i);
+    printf("Code test: %ld\n", i);
 
     MSG("Code test: %ld\n\n", i);
 
@@ -79,7 +80,8 @@ main()
     // MEASURE("  decaps", dec_rc = crypto_kem_dec(k_dec, ct, sk););
     dec_rc = crypto_kem_dec(k_dec, ct, sk);
 
-    if(dec_rc == 1){
+    if(dec_rc == 1)
+    {
       break;
     }
 

@@ -1309,10 +1309,10 @@ decode(OUT split_e_t       *e,
     char dname[FILENAME_MAX] = "iter_data_all.txt";
     
     if((sfp = fopen(sname, "r")) == NULL){
-      printf("\a文件打开失败。\n");
+      printf("\aerror\n");
     } else {
       if ((dfp = fopen(dname, "a")) == NULL){
-        printf("\a文件打开失败。\n");
+        printf("\aerror\n");
       }else {
         while ((ch = fgetc(sfp)) != EOF){
           fputc(ch, dfp);
