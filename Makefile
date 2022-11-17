@@ -66,7 +66,7 @@ run:
 		cd $$i;\
 		nohup ./main &\
 		cd ..;\
-		sleep .1;\
+		sleep 1;\
 		echo "第 $$i 个进程生成中...";\
 	done
 	@echo "---运行完成, 所有程序将在后台执行---"
