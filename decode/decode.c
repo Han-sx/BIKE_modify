@@ -77,7 +77,7 @@
 #  endif
 #endif
 
-#define EQ_COLUMN 1001 // 索引矩阵列数
+#define EQ_COLUMN 201 // 索引矩阵列数
 #define ROW       R_BITS
 #define X         EQ_COLUMN - 1
 #define N         2 * R_BITS
@@ -1018,7 +1018,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     black_or_gray_e_out->val[i] = black_or_gray_e.val[i];
   }
 
-  // 创建失败 flag
+  // 创建失败 flag 1 成功 0 失败
   uint16_t flag_BG = 1;
 
   //  26: if (wt(s) != 0) then
@@ -1034,7 +1034,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     flag_BG = 0;
   }
 
-  if(flag_BG == 0)
+  if(flag_BG == 0 || flag_BG == 1)
   {
 
     // ================> 增加方程组求解算法(当 s 不为 0) <================
@@ -1150,34 +1150,37 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     // 将增广常数 pad_constant_term 赋值给 equations[i][EQ_COLUMN]
     term_to_equations(equations, (syndrome_t *)&pad_constant_term);
 
-    // // -- test -- 输出 equations 的值, 并保存到 data_1.txt 中
-    // FILE *fp;
-    // fp = fopen("data_1.txt", "a");
-    // for(uint16_t i = 0; i < 11779; i++)
+    // if(delat == 8)
     // {
-    //   // if(equations[i][0] == 0)
-    //   // {
-    //   //   continue;
-    //   // }
-    //   for(uint8_t j = 0; j < EQ_COLUMN; j++)
+    //   // -- test -- 输出 equations 的值, 并保存到 data_1.txt 中
+    //   FILE *fp;
+    //   fp = fopen("data_1.txt", "a");
+    //   for(uint16_t i = 0; i < R_BITS; i++)
     //   {
-    //     if(j == (EQ_COLUMN-1))
-    //     {
-    //       fprintf(fp, "%u\n", equations[i][j]);
-    //       continue;
-    //     }
-    //     fprintf(fp, "%u,", equations[i][j]);
-    //     // if(equations[i][j] != 0)
+    //     // if(equations[i][0] == 0)
     //     // {
-    //     //   printf("%u  ", equations[i][j]);
+    //     //   continue;
     //     // }
+    //     for(uint8_t j = 0; j < EQ_COLUMN; j++)
+    //     {
+    //       if(j == (EQ_COLUMN - 1))
+    //       {
+    //         fprintf(fp, "%u\n", equations[i][j]);
+    //         continue;
+    //       }
+    //       fprintf(fp, "%u,", equations[i][j]);
+    //       // if(equations[i][j] != 0)
+    //       // {
+    //       //   printf("%u  ", equations[i][j]);
+    //       // }
+    //     }
+    //     // printf("\n");
     //   }
-    //   // printf("\n");
+    //   fclose(fp);
+    //   // double end_construct = clock();
+    //   // printf("-- 方程组构建时间 --: %lfs\n",
+    //   //        ((double)(end_construct - start_construct) / CLOCKS_PER_SEC));
     // }
-    // fclose(fp);
-    // double end_construct = clock();
-    // printf("-- 方程组构建时间 --: %lfs\n",
-    //        ((double)(end_construct - start_construct) / CLOCKS_PER_SEC));
 
     // 计算求解的 未知数 总个数(black_or_gray_e 的重量)
     uint16_t x_weight = r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
@@ -1273,7 +1276,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
       guss_x += 1;
     }
 
-    printf("方程行数: %u\n", guss_x);
+    printf("方程行数: %u, 未知数: %u\n", guss_x, x_weight);
 
     uint16_t flag_slove_x = 0;
     for(uint16_t i_iter_all = 0; i_iter_all < R_BITS; i_iter_all++)
@@ -1281,6 +1284,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
       // printf("i_iter_all: %u\n", i_iter_all);
       uint16_t eq_tmp[x_weight + 1];
       uint16_t i_tmp_ex = 0;
+
       // 将 equations_guss 化简为倒三角
       for(uint16_t j = 0; j < x_weight; j++)
       {
@@ -1298,6 +1302,29 @@ decode(OUT split_e_t       *black_or_gray_e_out,
           }
         }
       }
+
+      // if(i_iter_all == 0)
+      // {
+      //   // 将方程写入文件
+      //   FILE *fp_eq;
+      //   fp_eq = fopen("eq_guss.txt", "a");
+      //   for(uint16_t i = 0; i < guss_x; i++)
+      //   {
+      //     for(uint16_t j = 0; j < x_weight + 1; j++)
+      //     {
+      //       if(j == x_weight)
+      //       {
+      //         fprintf(fp_eq, "%u", equations_guss[i][j]);
+      //       }
+      //       else
+      //       {
+      //         fprintf(fp_eq, "%u,", equations_guss[i][j]);
+      //       }
+      //     }
+      //     fprintf(fp_eq, "\n");
+      //   }
+      //   fclose(fp_eq);
+      // }
 
       // 检查是否可解
       for(uint16_t i = 0; i < x_weight; i++)
@@ -1519,7 +1546,10 @@ decode(OUT split_e_t       *black_or_gray_e_out,
       printf("DELAT: %d 需求解未知数: %u\n", delat, x_weight);
     }
 
-    BIKE_ERROR(E_DECODING_FAILURE);
+    if(flag_BG == 0)
+    {
+      BIKE_ERROR(E_DECODING_FAILURE);
+    }
   }
 
   return SUCCESS;
