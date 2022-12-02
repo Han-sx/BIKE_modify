@@ -128,7 +128,7 @@ bike_static_assert((N_BITS % ALL_YMM_SIZE != 0), nbits_512_err);
 ////////////////////////////////
 #define BGF_DECODER
 #define DELTA  8
-#define DELTA_5 3
-#define DELTA_7 4
+#define DELTA_5 9
+#define DELTA_7 10
 #define DELTA_9 9
 #define SLICES (LOG2_MSB(DV) + 1)

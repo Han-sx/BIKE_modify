@@ -77,10 +77,11 @@
 #  endif
 #endif
 
-#define EQ_COLUMN 201 // 索引矩阵列数
-#define ROW       R_BITS
-#define X         EQ_COLUMN - 1
-#define N         2 * R_BITS
+#define EQ_COLUMN         201 // 索引矩阵列数
+#define ROW               R_BITS
+#define X                 EQ_COLUMN - 1
+#define N                 2 * R_BITS
+#define GUSS_INDEX_COLUMN 100
 
 // 0 使用拟合方法，1 使用论文方法
 #define TH_SELECT 0
@@ -1276,134 +1277,306 @@ decode(OUT split_e_t       *black_or_gray_e_out,
       guss_x += 1;
     }
 
-    printf("方程行数: %u, 未知数: %u\n", guss_x, x_weight);
+    // printf("方程行数: %u, 未知数: %u\n", guss_x, x_weight);
 
-    uint16_t flag_slove_x = 0;
-    for(uint16_t i_iter_all = 0; i_iter_all < R_BITS; i_iter_all++)
+    // 优化解方程结构使用 e 和 H 做“与”操作获得方程组，并去除 0
+    // 列达到和方程个数相同的列数
+    // TODO
+
+    // 暂时使用已经构造的 equations_guss 转为二进制保存的方程组来解
+
+    // --- 将 equations_guss 修改为字节保存的 equations_guss_byte ---
+    uint8_t mask_tmp = 1;
+    // guss_j_num 最后一个字用来存储 b
+    uint16_t guss_j_num = 0;
+    if(x_weight % 8 == 0)
     {
-      // printf("i_iter_all: %u\n", i_iter_all);
-      uint16_t eq_tmp[x_weight + 1];
-      uint16_t i_tmp_ex = 0;
-
-      // 将 equations_guss 化简为倒三角
-      for(uint16_t j = 0; j < x_weight; j++)
+      guss_j_num = x_weight / 8 + 1;
+    }
+    else
+    {
+      guss_j_num = x_weight / 8 + 2;
+    }
+    uint8_t equations_guss_byte[R_BITS][guss_j_num];
+    // 初始化 equations_guss_byte 为 0
+    for(uint16_t tmp_i = 0; tmp_i < R_BITS; tmp_i++)
+    {
+      for(uint16_t tmp_j = 0; tmp_j < guss_j_num; tmp_j++)
       {
-        for(uint16_t i = i_tmp_ex; i < guss_x; i++)
-        {
-          if(equations_guss[i][j] == 1)
-          {
-            for(uint16_t k = 0; k < x_weight + 1; k++)
-            {
-              eq_tmp[k]                   = equations_guss[i_tmp_ex][k];
-              equations_guss[i_tmp_ex][k] = equations_guss[i][k];
-              equations_guss[i][k]        = eq_tmp[k];
-            }
-            i_tmp_ex += 1;
-          }
-        }
+        equations_guss_byte[tmp_i][tmp_j] = 0;
       }
+    }
+    // printf("完成初始化\n");
 
-      // if(i_iter_all == 0)
-      // {
-      //   // 将方程写入文件
-      //   FILE *fp_eq;
-      //   fp_eq = fopen("eq_guss.txt", "a");
-      //   for(uint16_t i = 0; i < guss_x; i++)
-      //   {
-      //     for(uint16_t j = 0; j < x_weight + 1; j++)
-      //     {
-      //       if(j == x_weight)
-      //       {
-      //         fprintf(fp_eq, "%u", equations_guss[i][j]);
-      //       }
-      //       else
-      //       {
-      //         fprintf(fp_eq, "%u,", equations_guss[i][j]);
-      //       }
-      //     }
-      //     fprintf(fp_eq, "\n");
-      //   }
-      //   fclose(fp_eq);
-      // }
-
-      // 检查是否可解
-      for(uint16_t i = 0; i < x_weight; i++)
+    for(uint16_t w_i = 0; w_i < R_BITS; w_i++)
+    {
+      for(uint16_t w_j = 0; w_j < x_weight; w_j++)
       {
-        if(flag_slove_x == 1)
+        if(w_j % 8 == 0)
         {
-          break;
+          mask_tmp = 1;
         }
-
-        if(i == 0)
+        if(equations_guss[w_i][w_j] == 1)
         {
-          if(equations_guss[i][i] == 1)
-          {
-            continue;
-          }
-          else
-          {
-            flag_slove_x = 1;
-            continue;
-          }
+          equations_guss_byte[w_i][w_j / 8] += mask_tmp;
         }
-
-        if(equations_guss[i][i] == 1)
-        {
-          for(int j = i - 1; j >= 0; j--)
-          {
-            if(equations_guss[i][j] == 1)
-            {
-              flag_slove_x = 1;
-              break;
-            }
-          }
-        }
-        else
-        {
-          flag_slove_x = 1;
-          break;
-        }
+        mask_tmp <<= 1;
       }
+    }
+    // printf("完成转换\n");
+    // >---将 equations_guss 修改为字节保存的 equations_guss_byte---<
 
-      if(flag_slove_x == 1)
+    // --- 对 equations_guss_byte 进行高斯消元 ---
+    // 构建消元索引表
+    uint16_t guss_index[R_BITS][GUSS_INDEX_COLUMN + 2] = {0};
+    // 填充列表(此列表中的值从1开始索引)
+    for(uint16_t index_j = 0; index_j < x_weight; index_j++)
+    {
+      uint8_t mask_1    = 1;
+      uint8_t mask_guss = (mask_1 << (index_j % 8));
+      for(uint16_t index_i = 0; index_i < R_BITS; index_i++)
       {
-        flag_slove_x = 0;
-      }
-      else
-      {
-        // printf("方程可解!\n");
-        break;
-      }
-
-      // 尝试化简为上三角
-      uint16_t i_tmp_inver = 1;
-      for(uint16_t j_inver = 0; j_inver < x_weight; j_inver++)
-      {
-        for(uint16_t i_inver = i_tmp_inver; i_inver < guss_x; i_inver++)
+        if((mask_guss & equations_guss_byte[index_i][index_j / 8]) != 0)
         {
-          if((equations_guss[i_inver][j_inver] &
-              equations_guss[i_inver - 1][j_inver]) == 1)
-          {
-            for(uint16_t k_inver = 0; k_inver < x_weight + 1; k_inver++)
-            {
-              equations_guss[i_inver - 1][k_inver] =
-                  (equations_guss[i_inver - 1][k_inver] +
-                   equations_guss[i_inver][k_inver]) %
-                  2;
-            }
-            i_tmp_inver += 1;
-            continue;
-          }
-          if((equations_guss[i_inver][j_inver] |
-              equations_guss[i_inver - 1][j_inver]) != 1)
-          {
-            break;
-          }
-          i_tmp_inver += 1;
-          break;
+          guss_index[index_j][guss_index[index_j][GUSS_INDEX_COLUMN]] =
+              index_i + 1;
+          guss_index[index_j][GUSS_INDEX_COLUMN] += 1;
         }
       }
     }
+    // printf("填充完成\n");
+
+    // // ---- test ---- 查看 guss_index
+    // FILE *fp_guss_index;
+    // fp_guss_index = fopen("guss_index.txt", "a");
+    // for(uint16_t test_i = 0; test_i < R_BITS; test_i++)
+    // {
+    //   for(uint16_t test_j = 0; test_j < GUSS_INDEX_COLUMN + 2; test_j++)
+    //   {
+    //     fprintf(fp_guss_index,"%u,", guss_index[test_i][test_j]);
+    //   }
+    //   fprintf(fp_guss_index,"\n");
+    // }
+    // fclose(fp_guss_index);
+    // printf("写入完成\n");
+
+    // equations_guss_byte 加入常数列
+    for(uint16_t i_b = 0; i_b < R_BITS; i_b++)
+    {
+      if(equations[i_b][EQ_COLUMN - 1] == 1)
+      {
+        equations_guss_byte[i_b][guss_j_num - 1] = 1;
+      }
+    }
+
+    // 计时
+    double start = clock();
+    // 设置 x 主元表
+    uint8_t guss_x_main[R_BITS] = {0};
+    // 设置中转行
+    uint8_t tmp_guss[guss_j_num];
+    // 开始消元
+    for(uint16_t guss_j = 0; guss_j < x_weight; guss_j++)
+    {
+      uint8_t mask_1    = 1;
+      uint8_t mask_guss = (mask_1 << (guss_j % 8));
+      for(uint16_t guss_i = guss_j; guss_i < R_BITS; guss_i++)
+      {
+        //
+        if((mask_guss & equations_guss_byte[guss_i][guss_j / 8]) != 0)
+        {
+          if(guss_x_main[guss_j] == 0)
+          {
+            // 如果此列没有主元优先挑选主元
+            // 将此行作为当前列主元，交换第一行并继续向后消元
+            guss_x_main[guss_j] = 1;
+            for(uint16_t change_i = 0; change_i < guss_j_num; change_i++)
+            {
+              tmp_guss[change_i] = equations_guss_byte[guss_j][change_i];
+              equations_guss_byte[guss_j][change_i] =
+                  equations_guss_byte[guss_i][change_i];
+              equations_guss_byte[guss_i][change_i] = tmp_guss[change_i];
+            }
+          }
+          else
+          {
+            // 使用第 guss_j 行消此行
+            for(uint16_t change_i = 0; change_i < guss_j_num; change_i++)
+            {
+              equations_guss_byte[guss_i][change_i] ^=
+                  equations_guss_byte[guss_j][change_i];
+            }
+          }
+        }
+      }
+      // 将多余的 1 消除
+      for(uint16_t guss_i = 0; guss_i < guss_j; guss_i++)
+      {
+        if((mask_guss & equations_guss_byte[guss_i][guss_j / 8]) != 0)
+        {
+          // 使用第 guss_j 行消此行
+          for(uint16_t change_i = 0; change_i < guss_j_num; change_i++)
+          {
+            equations_guss_byte[guss_i][change_i] ^=
+                equations_guss_byte[guss_j][change_i];
+          }
+        }
+      }
+    }
+    // printf("guss完成\n");
+    double end = clock();
+    printf("guss took %lfs\n", ((double)(end - start) / CLOCKS_PER_SEC));
+
+    // for(uint16_t i_test = 0; i_test < x_weight; i_test++)
+    // {
+    //   if(guss_x_main[i_test] != 1)
+    //   {
+    //     printf("%u\n", i_test);
+    //   }
+    // }
+    // printf("检查完成\n");
+
+    // // ---- test ---- 查看 byte
+    // FILE *fp_guss_index;
+    // fp_guss_index = fopen("guss_byte.txt", "w");
+    // for(uint16_t test_i = 0; test_i < R_BITS; test_i++)
+    // {
+    //   for(uint16_t test_j = 0; test_j < guss_j_num; test_j++)
+    //   {
+    //     fprintf(fp_guss_index,"%u,", equations_guss_byte[test_i][test_j]);
+    //   }
+    //   fprintf(fp_guss_index,"\n");
+    // }
+    // fclose(fp_guss_index);
+    // printf("写入完成\n");
+
+    // // -----------------------------
+    // uint16_t flag_slove_x = 0;
+    // for(uint16_t i_iter_all = 0; i_iter_all < R_BITS; i_iter_all++)
+    // {
+    //   // printf("i_iter_all: %u\n", i_iter_all);
+    //   uint16_t eq_tmp[x_weight + 1];
+    //   uint16_t i_tmp_ex = 0;
+
+    //   // 将 equations_guss 化简为倒三角
+    //   for(uint16_t j = 0; j < x_weight; j++)
+    //   {
+    //     for(uint16_t i = i_tmp_ex; i < guss_x; i++)
+    //     {
+    //       if(equations_guss[i][j] == 1)
+    //       {
+    //         for(uint16_t k = 0; k < x_weight + 1; k++)
+    //         {
+    //           eq_tmp[k]                   = equations_guss[i_tmp_ex][k];
+    //           equations_guss[i_tmp_ex][k] = equations_guss[i][k];
+    //           equations_guss[i][k]        = eq_tmp[k];
+    //         }
+    //         i_tmp_ex += 1;
+    //       }
+    //     }
+    //   }
+
+    //   // if(i_iter_all == 0)
+    //   // {
+    //   //   // 将方程写入文件
+    //   //   FILE *fp_eq;
+    //   //   fp_eq = fopen("eq_guss.txt", "a");
+    //   //   for(uint16_t i = 0; i < guss_x; i++)
+    //   //   {
+    //   //     for(uint16_t j = 0; j < x_weight + 1; j++)
+    //   //     {
+    //   //       if(j == x_weight)
+    //   //       {
+    //   //         fprintf(fp_eq, "%u", equations_guss[i][j]);
+    //   //       }
+    //   //       else
+    //   //       {
+    //   //         fprintf(fp_eq, "%u,", equations_guss[i][j]);
+    //   //       }
+    //   //     }
+    //   //     fprintf(fp_eq, "\n");
+    //   //   }
+    //   //   fclose(fp_eq);
+    //   // }
+
+    //   // 检查是否可解
+    //   for(uint16_t i = 0; i < x_weight; i++)
+    //   {
+    //     if(flag_slove_x == 1)
+    //     {
+    //       break;
+    //     }
+
+    //     if(i == 0)
+    //     {
+    //       if(equations_guss[i][i] == 1)
+    //       {
+    //         continue;
+    //       }
+    //       else
+    //       {
+    //         flag_slove_x = 1;
+    //         continue;
+    //       }
+    //     }
+
+    //     if(equations_guss[i][i] == 1)
+    //     {
+    //       for(int j = i - 1; j >= 0; j--)
+    //       {
+    //         if(equations_guss[i][j] == 1)
+    //         {
+    //           flag_slove_x = 1;
+    //           break;
+    //         }
+    //       }
+    //     }
+    //     else
+    //     {
+    //       flag_slove_x = 1;
+    //       break;
+    //     }
+    //   }
+
+    //   if(flag_slove_x == 1)
+    //   {
+    //     flag_slove_x = 0;
+    //   }
+    //   else
+    //   {
+    //     // printf("方程可解!\n");
+    //     break;
+    //   }
+
+    //   // 尝试化简为上三角
+    //   uint16_t i_tmp_inver = 1;
+    //   for(uint16_t j_inver = 0; j_inver < x_weight; j_inver++)
+    //   {
+    //     for(uint16_t i_inver = i_tmp_inver; i_inver < guss_x; i_inver++)
+    //     {
+    //       if((equations_guss[i_inver][j_inver] &
+    //           equations_guss[i_inver - 1][j_inver]) == 1)
+    //       {
+    //         for(uint16_t k_inver = 0; k_inver < x_weight + 1; k_inver++)
+    //         {
+    //           equations_guss[i_inver - 1][k_inver] =
+    //               (equations_guss[i_inver - 1][k_inver] +
+    //                equations_guss[i_inver][k_inver]) %
+    //               2;
+    //         }
+    //         i_tmp_inver += 1;
+    //         continue;
+    //       }
+    //       if((equations_guss[i_inver][j_inver] |
+    //           equations_guss[i_inver - 1][j_inver]) != 1)
+    //       {
+    //         break;
+    //       }
+    //       i_tmp_inver += 1;
+    //       break;
+    //     }
+    //   }
+    // }
 
     // printf("当前行是否有问题:\n");
     // uint16_t index_test = 0;
@@ -1426,39 +1599,39 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     //   printf("有问题, 无解\n");
     // }
 
-    // 倒着求解
-    uint8_t  b_x[x_weight];
-    uint16_t b_x_index = x_weight - 1;
-    memset(b_x, 0, sizeof(b_x));
-    for(int i = x_weight - 1; i >= 0; i--)
-    {
-      if(b_x_index == x_weight - 1)
-      {
-        b_x[b_x_index] = equations_guss[i][x_weight];
-        // printf("第 %u 行, b_x_index: %u, b_x[b_x_index]: %u\n", i, b_x_index,
-        //        b_x[b_x_index]);
-        b_x_index = b_x_index - 1;
-        continue;
-      }
+    // // 倒着求解
+    // uint8_t  b_x[x_weight];
+    // uint16_t b_x_index = x_weight - 1;
+    // memset(b_x, 0, sizeof(b_x));
+    // for(int i = x_weight - 1; i >= 0; i--)
+    // {
+    //   if(b_x_index == x_weight - 1)
+    //   {
+    //     b_x[b_x_index] = equations_guss[i][x_weight];
+    //     // printf("第 %u 行, b_x_index: %u, b_x[b_x_index]: %u\n", i, b_x_index,
+    //     //        b_x[b_x_index]);
+    //     b_x_index = b_x_index - 1;
+    //     continue;
+    //   }
 
-      if(equations_guss[i][b_x_index] == 0)
-      {
-        continue;
-      }
+    //   if(equations_guss[i][b_x_index] == 0)
+    //   {
+    //     continue;
+    //   }
 
-      for(uint16_t j = b_x_index + 1; j < x_weight; j++)
-      {
-        if(equations_guss[i][j] == 1)
-        {
-          equations_guss[i][x_weight] =
-              (equations_guss[i][x_weight] + b_x[j]) % 2;
-        }
-      }
-      b_x[b_x_index] = equations_guss[i][x_weight];
-      // printf("第 %u 行, b_x_index: %u, b_x[b_x_index]: %u\n", i, b_x_index,
-      //        b_x[b_x_index]);
-      b_x_index = b_x_index - 1;
-    }
+    //   for(uint16_t j = b_x_index + 1; j < x_weight; j++)
+    //   {
+    //     if(equations_guss[i][j] == 1)
+    //     {
+    //       equations_guss[i][x_weight] =
+    //           (equations_guss[i][x_weight] + b_x[j]) % 2;
+    //     }
+    //   }
+    //   b_x[b_x_index] = equations_guss[i][x_weight];
+    //   // printf("第 %u 行, b_x_index: %u, b_x[b_x_index]: %u\n", i, b_x_index,
+    //   //        b_x[b_x_index]);
+    //   b_x_index = b_x_index - 1;
+    // }
 
     // for(uint16_t i = 0; i < x_weight; i++)
     // {
@@ -1490,13 +1663,13 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     uint16_t b[N] = {0};
     for(uint16_t i = 0; i < x_weight; i++)
     {
-      if(b_x[i] == 0)
+      if(equations_guss_byte[i][guss_j_num-1] == 0)
       {
         b[x_arr[i] - 1] = 2;
       }
       else
       {
-        b[x_arr[i] - 1] = b_x[i];
+        b[x_arr[i] - 1] = 1;
       }
     }
 
