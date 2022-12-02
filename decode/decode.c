@@ -53,6 +53,7 @@
 #include "utilities.h"
 #include <math.h>
 #include <string.h>
+#include <time.h>
 
 // Decoding (bit-flipping) parameter
 #ifdef BG_DECODER
@@ -82,6 +83,7 @@
 #define X                 EQ_COLUMN - 1
 #define N                 2 * R_BITS
 #define GUSS_INDEX_COLUMN 100
+#define GUSS_BLOCK        64
 
 // 0 使用拟合方法，1 使用论文方法
 #define TH_SELECT 0
@@ -1286,18 +1288,18 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     // 暂时使用已经构造的 equations_guss 转为二进制保存的方程组来解
 
     // --- 将 equations_guss 修改为字节保存的 equations_guss_byte ---
-    uint8_t mask_tmp = 1;
+    uint64_t mask_tmp = 1;
     // guss_j_num 最后一个字用来存储 b
     uint16_t guss_j_num = 0;
-    if(x_weight % 8 == 0)
+    if(x_weight % GUSS_BLOCK == 0)
     {
-      guss_j_num = x_weight / 8 + 1;
+      guss_j_num = x_weight / GUSS_BLOCK + 1;
     }
     else
     {
-      guss_j_num = x_weight / 8 + 2;
+      guss_j_num = x_weight / GUSS_BLOCK + 2;
     }
-    uint8_t equations_guss_byte[R_BITS][guss_j_num];
+    uint64_t equations_guss_byte[R_BITS][guss_j_num];
     // 初始化 equations_guss_byte 为 0
     for(uint16_t tmp_i = 0; tmp_i < R_BITS; tmp_i++)
     {
@@ -1312,13 +1314,13 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     {
       for(uint16_t w_j = 0; w_j < x_weight; w_j++)
       {
-        if(w_j % 8 == 0)
+        if(w_j % GUSS_BLOCK == 0)
         {
           mask_tmp = 1;
         }
         if(equations_guss[w_i][w_j] == 1)
         {
-          equations_guss_byte[w_i][w_j / 8] += mask_tmp;
+          equations_guss_byte[w_i][w_j / GUSS_BLOCK] += mask_tmp;
         }
         mask_tmp <<= 1;
       }
@@ -1327,23 +1329,23 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     // >---将 equations_guss 修改为字节保存的 equations_guss_byte---<
 
     // --- 对 equations_guss_byte 进行高斯消元 ---
-    // 构建消元索引表
-    uint16_t guss_index[R_BITS][GUSS_INDEX_COLUMN + 2] = {0};
-    // 填充列表(此列表中的值从1开始索引)
-    for(uint16_t index_j = 0; index_j < x_weight; index_j++)
-    {
-      uint8_t mask_1    = 1;
-      uint8_t mask_guss = (mask_1 << (index_j % 8));
-      for(uint16_t index_i = 0; index_i < R_BITS; index_i++)
-      {
-        if((mask_guss & equations_guss_byte[index_i][index_j / 8]) != 0)
-        {
-          guss_index[index_j][guss_index[index_j][GUSS_INDEX_COLUMN]] =
-              index_i + 1;
-          guss_index[index_j][GUSS_INDEX_COLUMN] += 1;
-        }
-      }
-    }
+    // // 构建消元索引表
+    // uint16_t guss_index[R_BITS][GUSS_INDEX_COLUMN + 2] = {0};
+    // // 填充列表(此列表中的值从1开始索引)
+    // for(uint16_t index_j = 0; index_j < x_weight; index_j++)
+    // {
+    //   uint8_t mask_1    = 1;
+    //   uint8_t mask_guss = (mask_1 << (index_j % 8));
+    //   for(uint16_t index_i = 0; index_i < R_BITS; index_i++)
+    //   {
+    //     if((mask_guss & equations_guss_byte[index_i][index_j / 8]) != 0)
+    //     {
+    //       guss_index[index_j][guss_index[index_j][GUSS_INDEX_COLUMN]] =
+    //           index_i + 1;
+    //       guss_index[index_j][GUSS_INDEX_COLUMN] += 1;
+    //     }
+    //   }
+    // }
     // printf("填充完成\n");
 
     // // ---- test ---- 查看 guss_index
@@ -1374,16 +1376,16 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     // 设置 x 主元表
     uint8_t guss_x_main[R_BITS] = {0};
     // 设置中转行
-    uint8_t tmp_guss[guss_j_num];
+    uint64_t tmp_guss[guss_j_num];
     // 开始消元
     for(uint16_t guss_j = 0; guss_j < x_weight; guss_j++)
     {
-      uint8_t mask_1    = 1;
-      uint8_t mask_guss = (mask_1 << (guss_j % 8));
+      uint64_t mask_1    = 1;
+      uint64_t mask_guss = (mask_1 << (guss_j % GUSS_BLOCK));
+      uint16_t eq_j = guss_j / GUSS_BLOCK;
       for(uint16_t guss_i = guss_j; guss_i < R_BITS; guss_i++)
       {
-        //
-        if((mask_guss & equations_guss_byte[guss_i][guss_j / 8]) != 0)
+        if((mask_guss & equations_guss_byte[guss_i][eq_j]) != 0)
         {
           if(guss_x_main[guss_j] == 0)
           {
@@ -1412,7 +1414,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
       // 将多余的 1 消除
       for(uint16_t guss_i = 0; guss_i < guss_j; guss_i++)
       {
-        if((mask_guss & equations_guss_byte[guss_i][guss_j / 8]) != 0)
+        if((mask_guss & equations_guss_byte[guss_i][eq_j]) != 0)
         {
           // 使用第 guss_j 行消此行
           for(uint16_t change_i = 0; change_i < guss_j_num; change_i++)
@@ -1608,7 +1610,8 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     //   if(b_x_index == x_weight - 1)
     //   {
     //     b_x[b_x_index] = equations_guss[i][x_weight];
-    //     // printf("第 %u 行, b_x_index: %u, b_x[b_x_index]: %u\n", i, b_x_index,
+    //     // printf("第 %u 行, b_x_index: %u, b_x[b_x_index]: %u\n", i,
+    //     b_x_index,
     //     //        b_x[b_x_index]);
     //     b_x_index = b_x_index - 1;
     //     continue;
@@ -1663,7 +1666,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     uint16_t b[N] = {0};
     for(uint16_t i = 0; i < x_weight; i++)
     {
-      if(equations_guss_byte[i][guss_j_num-1] == 0)
+      if(equations_guss_byte[i][guss_j_num - 1] == 0)
       {
         b[x_arr[i] - 1] = 2;
       }
