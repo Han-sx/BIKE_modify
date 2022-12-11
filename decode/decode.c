@@ -83,7 +83,7 @@
 #define X                 EQ_COLUMN - 1
 #define N                 2 * R_BITS
 #define GUSS_INDEX_COLUMN 100
-#define GUSS_BLOCK        64
+#define GUSS_BLOCK        8
 
 // 0 使用拟合方法，1 使用论文方法
 #define TH_SELECT 0
@@ -185,37 +185,30 @@ compute_th_R(IN uint16_t sk_wlist_all_0[][DV],
 
 // 用于交换两个数组
 _INLINE_ void
-swap(uint64_t *a, uint64_t *b)
+swap(OUT uint8_t *a, OUT uint8_t *b, uint32_t eq_j, uint32_t guss_j_num)
 {
-  uint64_t temp = *a;
-  *a            = *b;
-  *b            = temp;
+  uint8_t tmp_guss[guss_j_num];
+  for(uint16_t change_i = eq_j; change_i < guss_j_num; change_i++)
+  {
+    tmp_guss[change_i] = a[change_i];
+    a[change_i]        = b[change_i];
+    b[change_i]        = tmp_guss[change_i];
+  }
 }
 
-// 排序
-// 对 x_arr[i]排序
-_INLINE_ void
-sort(IN OUT uint16_t *nums, IN uint16_t count)
+// 64 位异或
+_INLINE_ ret_t
+xor_8(OUT uint8_t      *res,
+      IN const uint8_t *a,
+      IN const uint8_t *b,
+      IN const uint64_t bytelen,
+      IN const uint64_t r_bytelen)
 {
-  int i, j, temp, isSorted;
-
-  //优化算法：最多进行 n-1 轮比较
-  for(i = 0; i < count - 1; i++)
+  for(uint64_t i = r_bytelen; i < bytelen; i++)
   {
-    isSorted = 1; //假设剩下的元素已经排序好了
-    for(j = 0; j < count - 1 - i; j++)
-    {
-      if(nums[j] > nums[j + 1])
-      {
-        temp        = nums[j];
-        nums[j]     = nums[j + 1];
-        nums[j + 1] = temp;
-        isSorted = 0; //一旦需要交换数组元素，就说明剩下的元素没有排序好
-      }
-    }
-    if(isSorted)
-      break; //如果没有发生交换，说明剩下的元素已经排序好了
+    res[i] = a[i] ^ b[i];
   }
+  return SUCCESS;
 }
 
 // 利用解出来的 b 和 ct 还原 fm(ct_verify)
@@ -328,15 +321,15 @@ solving_equations(OUT uint16_t     *b,
       {
         equations[i][X] = 0;
         continue;
-      } //过滤全0
+      } // 过滤全0
       for(j = 0; j < X; j++)
       {
         if(equations[i][j] != 0)
         {
           if(b[equations[i][j] - 1] != 0)
           {
-            equations[i][X] =
-                (equations[i][X] + b[equations[i][j] - 1]) % 2; //直接减去索引的值
+            equations[i][X] = (equations[i][X] + b[equations[i][j] - 1]) %
+                              2; // 直接减去索引的值
             equations[i][j] = 0;
           }
         }
@@ -965,9 +958,62 @@ decode(OUT split_e_t       *black_or_gray_e_out,
 
   // ================================================================
 
+  // // 计算求解的 未知数 总个数(black_or_gray_e 的重量)
+  // uint16_t x_weight_1 = r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw)
+  // +
+  //                     r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw);
+  // printf("x_weight_1: %u\n",x_weight_1);
+
+  // // 将未知数个数填充满
+  // if(x_weight_1 < R_BITS)
+  // {
+  //   uint16_t pad_num_1 = (R_BITS - x_weight_1) / 2;
+  //   uint16_t pad_num_2 = (R_BITS - x_weight_1 - pad_num_1);
+
+  //   for(uint16_t test_i = 0; test_i < R_SIZE; test_i++)
+  //   {
+  //     for(uint8_t mask_1 = 1; mask_1 != 0; mask_1 <<= 1)
+  //     {
+  //       if((mask_1 & black_or_gray_e.val[0].raw[test_i]) == 0)
+  //       {
+  //         black_or_gray_e.val[0].raw[test_i] += mask_1;
+  //         pad_num_1 -= 1;
+  //       }
+  //       if(pad_num_1 == 0)
+  //       {
+  //         break;
+  //       }
+  //     }
+  //     if(pad_num_1 == 0)
+  //     {
+  //       break;
+  //     }
+  //   }
+  //   for(uint16_t test_i = 0; test_i < R_SIZE; test_i++)
+  //   {
+  //     for(uint8_t mask_1 = 1; mask_1 != 0; mask_1 <<= 1)
+  //     {
+  //       if((mask_1 & black_or_gray_e.val[1].raw[test_i]) == 0)
+  //       {
+  //         black_or_gray_e.val[1].raw[test_i] += mask_1;
+  //         pad_num_2 -= 1;
+  //       }
+  //       if(pad_num_2 == 0)
+  //       {
+  //         break;
+  //       }
+  //     }
+  //     if(pad_num_2 == 0)
+  //     {
+  //       break;
+  //     }
+  //   }
+  // }
+
   // 计算求解的 未知数 总个数(black_or_gray_e 的重量)
   uint16_t x_weight = r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
                       r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw);
+  // printf("x_weight: %u\n",x_weight);
 
   // 将 black_or_gray_e 传递出去比较是否包含所有错误向量
   for(uint16_t i = 0; i < N0; i++)
@@ -1039,17 +1085,11 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     {
       guss_j_num = x_weight / GUSS_BLOCK + 2;
     }
-    uint64_t equations_guss_byte[R_BITS][guss_j_num];
-    // memset(equations_guss_byte, 0, sizeof(equations_guss_byte));
-    for(uint16_t tmp_i = 0; tmp_i < R_BITS; tmp_i++)
-    {
-      for(uint16_t tmp_j = 0; tmp_j < guss_j_num; tmp_j++)
-      {
-        equations_guss_byte[tmp_i][tmp_j] = 0;
-      }
-    }
-    uint64_t mask_e       = 1;
-    uint64_t mask_e_byte  = 1;
+    uint8_t equations_guss_byte[R_BITS][guss_j_num];
+    memset(equations_guss_byte, 0, sizeof(equations_guss_byte));
+
+    uint8_t  mask_e       = 1;
+    uint8_t  mask_e_byte  = 1;
     uint16_t e_count      = 0;
     uint16_t e_index      = 0;
     uint16_t e_index_byte = 0;
@@ -1064,7 +1104,7 @@ decode(OUT split_e_t       *black_or_gray_e_out,
           mask_e  = 1;
           e_index = i_e_x / GUSS_BLOCK;
         }
-        if((mask_e & ((uint64_t *)black_or_gray_e.val[i].raw)[e_index]) != 0)
+        if((mask_e & black_or_gray_e.val[i].raw[e_index]) != 0)
         {
           if(e_count % GUSS_BLOCK == 0)
           {
@@ -1109,17 +1149,17 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     printf("建立方程 took %lfs\n",
            ((double)(end_construct - start_construct) / CLOCKS_PER_SEC));
 
+    // ==========================================================
+
     // 计时
     double start = clock();
     // 设置 x 主元表
     uint8_t guss_x_main[R_BITS] = {0};
-    // 设置中转行
-    uint64_t tmp_guss[guss_j_num];
     // 开始消元
     for(uint16_t guss_j = 0; guss_j < x_weight; guss_j++)
     {
-      uint64_t mask_1    = 1;
-      uint64_t mask_guss = (mask_1 << (guss_j % GUSS_BLOCK));
+      uint8_t  mask_1    = 1;
+      uint8_t  mask_guss = (mask_1 << (guss_j % GUSS_BLOCK));
       uint16_t eq_j      = guss_j / GUSS_BLOCK;
       for(uint16_t guss_i = guss_j; guss_i < R_BITS; guss_i++)
       {
@@ -1130,42 +1170,38 @@ decode(OUT split_e_t       *black_or_gray_e_out,
             // 如果此列没有主元优先挑选主元
             // 将此行作为当前列主元，交换第一行并继续向后消元
             guss_x_main[guss_j] = 1;
-            for(uint16_t change_i = 0; change_i < guss_j_num; change_i++)
-            {
-              tmp_guss[change_i] = equations_guss_byte[guss_j][change_i];
-              equations_guss_byte[guss_j][change_i] =
-                  equations_guss_byte[guss_i][change_i];
-              equations_guss_byte[guss_i][change_i] = tmp_guss[change_i];
-            }
+            swap(equations_guss_byte[guss_j], equations_guss_byte[guss_i], eq_j,
+                 guss_j_num);
           }
           else
           {
             // 使用第 guss_j 行消此行
-            for(uint16_t change_i = 0; change_i < guss_j_num; change_i++)
-            {
-              equations_guss_byte[guss_i][change_i] ^=
-                  equations_guss_byte[guss_j][change_i];
-            }
-          }
-        }
-      }
-      // 将多余的 1 消除
-      for(uint16_t guss_i = 0; guss_i < guss_j; guss_i++)
-      {
-        if((mask_guss & equations_guss_byte[guss_i][eq_j]) != 0)
-        {
-          // 使用第 guss_j 行消此行
-          for(uint16_t change_i = 0; change_i < guss_j_num; change_i++)
-          {
-            equations_guss_byte[guss_i][change_i] ^=
-                equations_guss_byte[guss_j][change_i];
+            GUARD(xor_8(equations_guss_byte[guss_i], equations_guss_byte[guss_i],
+                        equations_guss_byte[guss_j], guss_j_num, eq_j));
           }
         }
       }
     }
-    // printf("guss完成\n");
+    // 倒着求解
+    for(int guss_j = x_weight - 1; guss_j >= 0; guss_j--)
+    {
+      uint16_t eq_j = guss_j / GUSS_BLOCK;
+      for(uint16_t guss_i = guss_j; guss_i > 0; guss_i--)
+      {
+        if((equations_guss_byte[guss_j][eq_j] &
+            equations_guss_byte[guss_i - 1][eq_j]) != 0)
+        {
+          equations_guss_byte[guss_i - 1][eq_j] ^=
+              equations_guss_byte[guss_j][eq_j];
+          equations_guss_byte[guss_i - 1][guss_j_num - 1] ^=
+              equations_guss_byte[guss_j][guss_j_num - 1];
+        }
+      }
+    }
     double end = clock();
     printf("guss took %lfs\n", ((double)(end - start) / CLOCKS_PER_SEC));
+
+    // ========================================================================
 
     // 构造高斯消元解数组
     uint16_t b[N] = {0};
