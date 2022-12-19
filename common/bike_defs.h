@@ -60,6 +60,7 @@
 
 #  define THRESHOLD_COEFF0 13.530
 #  define THRESHOLD_COEFF1 0.0069721
+#  define THRESHOLD_MAX    36
 
 // The gfm code is optimized to a block size in this case:
 #  define BLOCK_SIZE       (16384)

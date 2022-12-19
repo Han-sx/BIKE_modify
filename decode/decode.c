@@ -621,7 +621,15 @@ get_threshold(IN const syndrome_t *s)
       THRESHOLD_COEFF0 + (THRESHOLD_COEFF1 * syndrome_weight);
 
   DMSG("    Thresold: %d\n", threshold);
-  return threshold;
+
+  if(threshold > THRESHOLD_MAX)
+  {
+    return threshold;
+  }
+  else
+  {
+    return THRESHOLD_MAX;
+  }
 }
 
 // Use half-adder as described in [5].
@@ -914,11 +922,10 @@ decode(OUT split_e_t       *e,
                               r_bits_vector_weight(&fixed_e.val[1]);
 
     // ---- test ---- 使用论文方法计算的 th, 同时获取一个概率验证 p_p 和 x
-    double_t       p_p   = 0;
-    double_t       x = 0;
-    const double_t threshold_2 =
-        compute_th_R(&x, &p_p, sk_wlist_all_0, sk_wlist_all_1, fixed_e_weight,
-                     &fixed_e, &s);
+    double_t       p_p         = 0;
+    double_t       x           = 0;
+    const double_t threshold_2 = compute_th_R(
+        &x, &p_p, sk_wlist_all_0, sk_wlist_all_1, fixed_e_weight, &fixed_e, &s);
 
     // 获取当前 s 的重量
     uint16_t s_weight = r_bits_vector_weight((const r_t *)s.qw);
@@ -1302,19 +1309,26 @@ decode(OUT split_e_t       *e,
     // *flag = 1;
 
     // 如果出错 就把错误数据写入文件
-    int ch;
+    int   ch;
     FILE *sfp;
     FILE *dfp;
-    char sname[FILENAME_MAX] = "iter_data.txt";
-    char dname[FILENAME_MAX] = "iter_data_all.txt";
-    
-    if((sfp = fopen(sname, "r")) == NULL){
+    char  sname[FILENAME_MAX] = "iter_data.txt";
+    char  dname[FILENAME_MAX] = "iter_data_all.txt";
+
+    if((sfp = fopen(sname, "r")) == NULL)
+    {
       printf("\aerror\n");
-    } else {
-      if ((dfp = fopen(dname, "a")) == NULL){
+    }
+    else
+    {
+      if((dfp = fopen(dname, "a")) == NULL)
+      {
         printf("\aerror\n");
-      }else {
-        while ((ch = fgetc(sfp)) != EOF){
+      }
+      else
+      {
+        while((ch = fgetc(sfp)) != EOF)
+        {
           fputc(ch, dfp);
         }
         fclose(dfp);
@@ -1325,7 +1339,7 @@ decode(OUT split_e_t       *e,
     // 译码失败复制后也删除文件
     if(remove("iter_data.txt") == 0)
     {
-    }    
+    }
 
     DMSG("s 重量不为 0...");
     BIKE_ERROR(E_DECODING_FAILURE);

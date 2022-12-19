@@ -49,7 +49,10 @@ main()
   {
     int res = 0;
 
-    printf("Code test: %ld\n", i);
+    if(i % 65535 == 0)
+    {
+      printf("Code test: %lu\n", i);
+    }
 
     MSG("Code test: %ld\n\n", i);
 
