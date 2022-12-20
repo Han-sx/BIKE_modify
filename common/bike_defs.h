@@ -54,12 +54,13 @@
 #  define BLOCK_SIZE       32768
 #elif(LEVEL == 1)
 // 64-bits of post-quantum security parameters (BIKE paper):
-#  define R_BITS 10163
+#  define R_BITS 9547 //10163
 #  define DV     71
 #  define T1     134
 
 #  define THRESHOLD_COEFF0 13.530
 #  define THRESHOLD_COEFF1 0.0069721
+#  define THRESHOLD_MAX    36
 
 // The gfm code is optimized to a block size in this case:
 #  define BLOCK_SIZE       (16384)
@@ -127,7 +128,7 @@ bike_static_assert((N_BITS % ALL_YMM_SIZE != 0), nbits_512_err);
 // Parameters for the BG decoder.
 ////////////////////////////////
 #define BGF_DECODER
-#define DELTA  8
+#define DELTA  3
 #define DELTA_5 9
 #define DELTA_7 10
 #define DELTA_9 9

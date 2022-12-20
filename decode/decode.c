@@ -85,6 +85,13 @@
 #define GUSS_INDEX_COLUMN 100
 #define GUSS_BLOCK        8
 
+// 定义是否包括 stepII 和 stepIII 的集合, 0 代表不包括, 1 代表包括
+#define STEP23_ON 0
+// 定义解方程的 delta 大小
+#define DELTA_EQ 6
+// 定义 stepII 和 stepIII 中取的集合 delta 大小
+#define DELTA_STEP23 0
+
 // 0 使用拟合方法，1 使用论文方法
 #define TH_SELECT 0
 
@@ -610,7 +617,15 @@ get_threshold(IN const syndrome_t *s)
       THRESHOLD_COEFF0 + (THRESHOLD_COEFF1 * syndrome_weight);
 
   DMSG("    Thresold: %d\n", threshold);
-  return threshold;
+
+  if(threshold > THRESHOLD_MAX)
+  {
+    return threshold;
+  }
+  else
+  {
+    return THRESHOLD_MAX;
+  }
 }
 
 // Use half-adder as described in [5].
@@ -813,11 +828,16 @@ decode(OUT split_e_t       *black_or_gray_e_out,
        IN const syndrome_t *original_s,
        IN const ct_t       *ct,
        IN const sk_t       *sk,
-       IN const uint8_t     delat)
+       IN const uint8_t     delat,
+       IN OUT uint32_t     *decoder_error_count,
+       IN OUT uint32_t     *equations_error_count)
 {
   // 初始化黑灰数组
   split_e_t  black_e           = {0};
   split_e_t  gray_e            = {0};
+  split_e_t  black_e_eq        = {0};
+  split_e_t  gray_e_eq         = {0};
+  split_e_t  e_eq              = {0};
   split_e_t  black_or_gray_e   = {0};
   split_e_t  fixed_e           = {0};
   ct_t       ct_remove_BG      = {0};
@@ -826,6 +846,8 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   sk_t       sk_transpose      = {0};
   syndrome_t pad_constant_term = {0};
   syndrome_t s;
+  uint8_t    delat_eq        = DELTA_EQ;
+  uint8_t    delat_eq_step23 = DELTA_STEP23;
 
   // 定义 11779 行方程组, 前 EQ_COLUMN-1 个元素用于保存索引, 第 EQ_COLUMN
   // 个用于存放增广常数
@@ -904,6 +926,9 @@ decode(OUT split_e_t       *black_or_gray_e_out,
          r_bits_vector_weight(&e->val[0]) + r_bits_vector_weight(&e->val[1]));
     DMSG("    Weight of syndrome: %lu\n", r_bits_vector_weight((r_t *)s.qw));
 
+    // 进入选取解方程黑灰集合
+    find_err1(&e_eq, &black_e_eq, &gray_e_eq, &s, sk->wlist, threshold, delat_eq);
+
     // 23:  (s, e, black, gray) = BitFlipIter(s, e, th, H) . Step I
     // H -- sk->wlist
     // 进入 procedure BitFlipIter(s, e, th, H)
@@ -915,13 +940,13 @@ decode(OUT split_e_t       *black_or_gray_e_out,
       {
         // 将黑灰集合'或'运算(black_e | gray_e) 存放于
         // black_or_gray_e，即所有未知数位
-        GUARD(gf2x_or((uint8_t *)&black_or_gray_e.val[i].raw, black_e.val[i].raw,
-                      gray_e.val[i].raw, R_SIZE));
+        GUARD(gf2x_or((uint8_t *)&black_or_gray_e.val[i].raw,
+                      black_e_eq.val[i].raw, gray_e_eq.val[i].raw, R_SIZE));
       }
       else
       {
-        GUARD(gf2x_or((uint8_t *)&black_or_gray_e.val[i].raw, black_e.val[i].raw,
-                      gray_e.val[i].raw, R_SIZE));
+        GUARD(gf2x_or((uint8_t *)&black_or_gray_e.val[i].raw,
+                      black_e_eq.val[i].raw, gray_e_eq.val[i].raw, R_SIZE));
       }
     }
 
@@ -939,6 +964,21 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     DMSG("    Weight of e: %lu\n",
          r_bits_vector_weight(&e->val[0]) + r_bits_vector_weight(&e->val[1]));
     DMSG("    Weight of syndrome: %lu\n", r_bits_vector_weight((r_t *)s.qw));
+
+    if(STEP23_ON == 1)
+    {
+      // 进入选取解方程黑灰集合
+      find_err1(&e_eq, &black_e_eq, &gray_e_eq, &s, sk->wlist, ((DV + 1) / 2) + 1,
+                delat_eq_step23);
+
+      for(uint8_t i = 0; i < N0; i++)
+      {
+        // 将黑灰集合'或'运算(black_e | gray_e) 存放于
+        // black_or_gray_e，即所有未知数位
+        GUARD(gf2x_or((uint8_t *)&black_or_gray_e.val[i].raw,
+                      black_e_eq.val[i].raw, gray_e_eq.val[i].raw, R_SIZE));
+      }
+    }
 
     // 24:  (s, e) = BitFlipMaskedIter(s, e, black, ((d + 1)/2), H) . Step II
     // procedure BitFlipMaskedIter(s, e, mask, th, H)
@@ -1013,7 +1053,6 @@ decode(OUT split_e_t       *black_or_gray_e_out,
   // 计算求解的 未知数 总个数(black_or_gray_e 的重量)
   uint16_t x_weight = r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
                       r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw);
-  // printf("x_weight: %u\n",x_weight);
 
   // 将 black_or_gray_e 传递出去比较是否包含所有错误向量
   for(uint16_t i = 0; i < N0; i++)
@@ -1035,9 +1074,10 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     *flag = 1;
     DMSG("s 重量不为 0...");
     flag_BG = 0;
+    *decoder_error_count += 1;
   }
 
-  if(flag_BG == 0 || flag_BG == 1)
+  if(flag_BG == 0)
   {
 
     // ================> 增加方程组求解算法(当 s 不为 0) <================
@@ -1253,10 +1293,9 @@ decode(OUT split_e_t       *black_or_gray_e_out,
       FILE *fp_2;
       fp_2 = fopen("weight_bad.txt", "a");
       fprintf(fp_2, "DELAT: %d 当前未知数: %u 解方程失败\n", delat, x_weight);
-      // fprintf(fp_2, "v_0 重量为: %u\n", verify_weight_0);
-      // fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
       fclose(fp_2);
       *flag = 1;
+      *equations_error_count += 1;
     }
     else
     {

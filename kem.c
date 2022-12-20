@@ -404,14 +404,16 @@ crypto_kem_enc(OUT unsigned char      *ct,
 int
 crypto_kem_dec(OUT unsigned char      *ss,
                IN const unsigned char *ct,
-               IN const unsigned char *sk)
+               IN const unsigned char *sk,
+               IN OUT uint32_t        *decoder_error_count,
+               IN OUT uint32_t        *equations_error_count)
 {
   DMSG("\n  Enter crypto_kem_dec(译码开始).\n");
 
   // 增加 black_or_gray_e_out 用来验证是否包含所有错误向量
-  split_e_t black_or_gray_e_out   = {0};
-  split_e_t black_or_gray_e_out_5 = {0};
-  split_e_t black_or_gray_e_out_7 = {0};
+  split_e_t black_or_gray_e_out = {0};
+  // split_e_t black_or_gray_e_out_5 = {0};
+  // split_e_t black_or_gray_e_out_7 = {0};
   // split_e_t black_or_gray_e_out_9 = {0};
 
   // Convert to the types used by this implementation
@@ -423,21 +425,21 @@ crypto_kem_dec(OUT unsigned char      *ss,
   DEFER_CLEANUP(syndrome_t syndrome = {0}, syndrome_cleanup);
   DEFER_CLEANUP(split_e_t e, split_e_cleanup);
   // 添加对 5 7 9 测试
-  DEFER_CLEANUP(syndrome_t syndrome_5 = {0}, syndrome_cleanup);
-  DEFER_CLEANUP(split_e_t e_5, split_e_cleanup);
-  DEFER_CLEANUP(syndrome_t syndrome_7 = {0}, syndrome_cleanup);
-  DEFER_CLEANUP(split_e_t e_7, split_e_cleanup);
-  DEFER_CLEANUP(syndrome_t syndrome_9 = {0}, syndrome_cleanup);
-  DEFER_CLEANUP(split_e_t e_9, split_e_cleanup);
+  // DEFER_CLEANUP(syndrome_t syndrome_5 = {0}, syndrome_cleanup);
+  // DEFER_CLEANUP(split_e_t e_5, split_e_cleanup);
+  // DEFER_CLEANUP(syndrome_t syndrome_7 = {0}, syndrome_cleanup);
+  // DEFER_CLEANUP(split_e_t e_7, split_e_cleanup);
+  // DEFER_CLEANUP(syndrome_t syndrome_9 = {0}, syndrome_cleanup);
+  // DEFER_CLEANUP(split_e_t e_9, split_e_cleanup);
 
   DMSG("  Computing s.\n");
   // Compute the syndrome s = c0h0 + c1h1
   // 计算初始校验子 s
   GUARD(compute_syndrome(&syndrome, l_ct, l_sk));
   // 添加对 5 7 9 测试
-  GUARD(compute_syndrome(&syndrome_5, l_ct, l_sk));
-  GUARD(compute_syndrome(&syndrome_7, l_ct, l_sk));
-  GUARD(compute_syndrome(&syndrome_9, l_ct, l_sk));
+  // GUARD(compute_syndrome(&syndrome_5, l_ct, l_sk));
+  // GUARD(compute_syndrome(&syndrome_7, l_ct, l_sk));
+  // GUARD(compute_syndrome(&syndrome_9, l_ct, l_sk));
 
   // // -- test --
   // for(uint16_t i_qw = 0; i_qw < 555; i_qw++)
@@ -446,9 +448,9 @@ crypto_kem_dec(OUT unsigned char      *ss,
   // }
 
   // 用于检测错误向量是否包含
-  split_e_t res_include   = {0};
-  split_e_t res_include_5 = {0};
-  split_e_t res_include_7 = {0};
+  split_e_t res_include = {0};
+  // split_e_t res_include_5 = {0};
+  // split_e_t res_include_7 = {0};
   // split_e_t res_include_9 = {0};
 
   // e 的重量
@@ -456,15 +458,16 @@ crypto_kem_dec(OUT unsigned char      *ss,
                       r_bits_vector_weight((r_t *)R_e.val[1].raw);
 
   DMSG("  Decoding.\n"); // 使用黑灰译码，IN syndrome, l_ct and l_sk, OUT e
-  uint8_t  flag = 0;
+  uint8_t flag = 0;
   // double start_decode = clock();
-  uint32_t dec_ret =
-      decode((split_e_t *)&black_or_gray_e_out, &e, (uint8_t *)&flag, &R_e,
-             &syndrome, l_ct, l_sk, DELTA) != SUCCESS
-          ? 0
-          : 1;
+  uint32_t dec_ret = decode((split_e_t *)&black_or_gray_e_out, &e,
+                            (uint8_t *)&flag, &R_e, &syndrome, l_ct, l_sk, DELTA,
+                            decoder_error_count, equations_error_count) != SUCCESS
+                         ? 0
+                         : 1;
   // double end_decode = clock();
-  // printf("-- decode总时间 --: %lfs\n\n", ((double)(end_decode - start_decode) / CLOCKS_PER_SEC));
+  // printf("-- decode总时间 --: %lfs\n\n", ((double)(end_decode - start_decode) /
+  // CLOCKS_PER_SEC));
   GUARD(gf2x_and((uint8_t *)&res_include.val[0].raw,
                  black_or_gray_e_out.val[0].raw, R_e.val[0].raw, R_SIZE));
   GUARD(gf2x_and((uint8_t *)&res_include.val[1].raw,
@@ -485,70 +488,79 @@ crypto_kem_dec(OUT unsigned char      *ss,
   fclose(fp);
   flag = 0;
 
-  // 添加对 delta 5 7 9 的测试
-  uint8_t  flag_5 = 0;
-  // start_decode = clock();
-  uint32_t dec_ret_5 =
-      decode((split_e_t *)&black_or_gray_e_out_5, &e_5, (uint8_t *)&flag_5, &R_e,
-             &syndrome_5, l_ct, l_sk, DELTA_5) != SUCCESS
-          ? 0
-          : 1;
-  // end_decode = clock();
-  // printf("-- decode总时间 --: %lfs\n\n", ((double)(end_decode - start_decode) / CLOCKS_PER_SEC));
+  // // 添加对 delta 5 7 9 的测试
+  // uint8_t  flag_5 = 0;
+  // // start_decode = clock();
+  // uint32_t dec_ret_5 =
+  //     decode((split_e_t *)&black_or_gray_e_out_5, &e_5, (uint8_t *)&flag_5,
+  //     &R_e,
+  //            &syndrome_5, l_ct, l_sk, DELTA_5) != SUCCESS
+  //         ? 0
+  //         : 1;
+  // // end_decode = clock();
+  // // printf("-- decode总时间 --: %lfs\n\n", ((double)(end_decode -
+  // start_decode) / CLOCKS_PER_SEC));
 
-  GUARD(gf2x_and((uint8_t *)&res_include_5.val[0].raw,
-                 black_or_gray_e_out_5.val[0].raw, R_e.val[0].raw, R_SIZE));
-  GUARD(gf2x_and((uint8_t *)&res_include_5.val[1].raw,
-                 black_or_gray_e_out_5.val[1].raw, R_e.val[1].raw, R_SIZE));
-  uint16_t res_weight_5 = r_bits_vector_weight((r_t *)res_include_5.val[0].raw) +
-                          r_bits_vector_weight((r_t *)res_include_5.val[1].raw);
-  FILE *fp_5;
-  fp_5 = fopen("weight_bad.txt", "a");
-  if(res_weight_5 != e_weight)
-  {
-    fprintf(fp_5, "DELAT: %d 不包含所有错误向量\n", DELTA_5);
-    flag_5 = 1;
-  }
-  if(flag_5 == 1)
-  {
-    fprintf(fp_5, "\n");
-  }
-  fclose(fp_5);
-  flag_5 = 0;
+  // GUARD(gf2x_and((uint8_t *)&res_include_5.val[0].raw,
+  //                black_or_gray_e_out_5.val[0].raw, R_e.val[0].raw, R_SIZE));
+  // GUARD(gf2x_and((uint8_t *)&res_include_5.val[1].raw,
+  //                black_or_gray_e_out_5.val[1].raw, R_e.val[1].raw, R_SIZE));
+  // uint16_t res_weight_5 = r_bits_vector_weight((r_t *)res_include_5.val[0].raw)
+  // +
+  //                         r_bits_vector_weight((r_t
+  //                         *)res_include_5.val[1].raw);
+  // FILE *fp_5;
+  // fp_5 = fopen("weight_bad.txt", "a");
+  // if(res_weight_5 != e_weight)
+  // {
+  //   fprintf(fp_5, "DELAT: %d 不包含所有错误向量\n", DELTA_5);
+  //   flag_5 = 1;
+  // }
+  // if(flag_5 == 1)
+  // {
+  //   fprintf(fp_5, "\n");
+  // }
+  // fclose(fp_5);
+  // flag_5 = 0;
 
-  uint8_t  flag_7 = 0;
-  // start_decode = clock();
-  uint32_t dec_ret_7 =
-      decode((split_e_t *)&black_or_gray_e_out_7, &e_7, (uint8_t *)&flag_7, &R_e,
-             &syndrome_7, l_ct, l_sk, DELTA_7) != SUCCESS
-          ? 0
-          : 1;
-  // end_decode = clock();
-  // printf("-- decode总时间 --: %lfs\n\n", ((double)(end_decode - start_decode) / CLOCKS_PER_SEC));
+  // uint8_t  flag_7 = 0;
+  // // start_decode = clock();
+  // uint32_t dec_ret_7 =
+  //     decode((split_e_t *)&black_or_gray_e_out_7, &e_7, (uint8_t *)&flag_7,
+  //     &R_e,
+  //            &syndrome_7, l_ct, l_sk, DELTA_7) != SUCCESS
+  //         ? 0
+  //         : 1;
+  // // end_decode = clock();
+  // // printf("-- decode总时间 --: %lfs\n\n", ((double)(end_decode -
+  // start_decode) / CLOCKS_PER_SEC));
 
-  GUARD(gf2x_and((uint8_t *)&res_include_7.val[0].raw,
-                 black_or_gray_e_out_7.val[0].raw, R_e.val[0].raw, R_SIZE));
-  GUARD(gf2x_and((uint8_t *)&res_include_7.val[1].raw,
-                 black_or_gray_e_out_7.val[1].raw, R_e.val[1].raw, R_SIZE));
-  uint16_t res_weight_7 = r_bits_vector_weight((r_t *)res_include_7.val[0].raw) +
-                          r_bits_vector_weight((r_t *)res_include_7.val[1].raw);
-  FILE *fp_7;
-  fp_7 = fopen("weight_bad.txt", "a");
-  if(res_weight_7 != e_weight)
-  {
-    fprintf(fp_7, "DELAT: %d 不包含所有错误向量\n", DELTA_7);
-    flag_7 = 1;
-  }
-  if(flag_7 == 1)
-  {
-    fprintf(fp_7, "\n");
-  }
-  fclose(fp_7);
-  flag_7 = 0;
+  // GUARD(gf2x_and((uint8_t *)&res_include_7.val[0].raw,
+  //                black_or_gray_e_out_7.val[0].raw, R_e.val[0].raw, R_SIZE));
+  // GUARD(gf2x_and((uint8_t *)&res_include_7.val[1].raw,
+  //                black_or_gray_e_out_7.val[1].raw, R_e.val[1].raw, R_SIZE));
+  // uint16_t res_weight_7 = r_bits_vector_weight((r_t *)res_include_7.val[0].raw)
+  // +
+  //                         r_bits_vector_weight((r_t
+  //                         *)res_include_7.val[1].raw);
+  // FILE *fp_7;
+  // fp_7 = fopen("weight_bad.txt", "a");
+  // if(res_weight_7 != e_weight)
+  // {
+  //   fprintf(fp_7, "DELAT: %d 不包含所有错误向量\n", DELTA_7);
+  //   flag_7 = 1;
+  // }
+  // if(flag_7 == 1)
+  // {
+  //   fprintf(fp_7, "\n");
+  // }
+  // fclose(fp_7);
+  // flag_7 = 0;
 
   // uint8_t  flag_9 = 0;
   // uint32_t dec_ret_9 =
-  //     decode((split_e_t *)&black_or_gray_e_out_9, &e_9, (uint8_t *)&flag_9, &R_e,
+  //     decode((split_e_t *)&black_or_gray_e_out_9, &e_9, (uint8_t *)&flag_9,
+  //     &R_e,
   //            &syndrome_9, l_ct, l_sk, DELTA_9) != SUCCESS
   //         ? 0
   //         : 1;
@@ -556,8 +568,10 @@ crypto_kem_dec(OUT unsigned char      *ss,
   //                black_or_gray_e_out_9.val[0].raw, R_e.val[0].raw, R_SIZE));
   // GUARD(gf2x_and((uint8_t *)&res_include_9.val[1].raw,
   //                black_or_gray_e_out_9.val[1].raw, R_e.val[1].raw, R_SIZE));
-  // uint16_t res_weight_9 = r_bits_vector_weight((r_t *)res_include_9.val[0].raw) +
-  //                         r_bits_vector_weight((r_t *)res_include_9.val[1].raw);
+  // uint16_t res_weight_9 = r_bits_vector_weight((r_t *)res_include_9.val[0].raw)
+  // +
+  //                         r_bits_vector_weight((r_t
+  //                         *)res_include_9.val[1].raw);
   // FILE *fp_9;
   // fp_9 = fopen("weight_bad.txt", "a");
   // if(res_weight_9 != e_weight)
@@ -572,22 +586,22 @@ crypto_kem_dec(OUT unsigned char      *ss,
   // fclose(fp_9);
   // flag_9 = 0;
 
-  if(dec_ret_5 == 0)
-  {
-    // printf("5 译码失败\n");
-  }
-  else
-  {
-    // printf("5 译码成功\n");
-  }
-  if(dec_ret_7 == 0)
-  {
-    // printf("7 译码失败\n");
-  }
-  else
-  {
-    // printf("7 译码成功\n");
-  }
+  // if(dec_ret_5 == 0)
+  // {
+  //   // printf("5 译码失败\n");
+  // }
+  // else
+  // {
+  //   // printf("5 译码成功\n");
+  // }
+  // if(dec_ret_7 == 0)
+  // {
+  //   // printf("7 译码失败\n");
+  // }
+  // else
+  // {
+  //   // printf("7 译码成功\n");
+  // }
   // if(dec_ret_9 == 0)
   // {
   //   // printf("9 译码失败\n");
