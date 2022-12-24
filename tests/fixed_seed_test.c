@@ -49,12 +49,13 @@ main()
   {
     int res = 0;
 
-    if(i % 65535 == 0)
-    {
-      printf("Code test: %lu\n", i);
-    }
-
-    MSG("Code test: %ld\n\n", i);
+    // if(i % 256 == 0)
+    // {
+    //   printf("Code test: %lu\n", i);
+    // }
+    
+    // printf("Code test: %lu\n", i);
+    // MSG("Code test: %ld\n\n", i);
 
     // Key generation 密钥生成
     // h0 h1, σ0 σ1, g 在此步骤中均随机采样
