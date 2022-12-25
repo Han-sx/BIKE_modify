@@ -292,7 +292,7 @@ term_to_equations(OUT uint16_t         equations[][EQ_COLUMN],
                   IN const syndrome_t *pad_constant_term)
 {
   // 处理前 11776 位
-  for(uint8_t i = 0; i < R_QW - 1; i++)
+  for(uint32_t i = 0; i < R_QW - 1; i++)
   {
     for(uint64_t index = 0, location = 1; location != 0; location <<= 1)
     {
@@ -321,11 +321,11 @@ solving_equations(OUT uint16_t     *b,
                   IN const uint16_t e_num)
 {
   // 结果被保存在 b[23558] 中, 0 被保存为 2, 1 被保存为 1
-  uint16_t M = e_num;
-  uint16_t i, j;
-  uint16_t y = 0;
-  uint16_t t = 0;
-  uint16_t c = 0;
+  uint32_t M = e_num;
+  uint32_t i, j;
+  uint32_t y = 0;
+  uint32_t t = 0;
+  uint32_t c = 0;
   while(t < X)
   {
     for(i = 0; i < ROW; i++)
