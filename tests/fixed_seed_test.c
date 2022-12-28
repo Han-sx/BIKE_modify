@@ -81,8 +81,8 @@ main()
     }
 
     // Decapsulate 解封装, IN ct and sk, OUT k_dec
-    MEASURE("  decaps", dec_rc = crypto_kem_dec(k_dec, ct, sk););
-    // dec_rc = crypto_kem_dec(k_dec, ct, sk);
+    // MEASURE("  decaps", dec_rc = crypto_kem_dec(k_dec, ct, sk););
+    dec_rc = crypto_kem_dec(k_dec, ct, sk);
 
     if(dec_rc == 1)
     {
