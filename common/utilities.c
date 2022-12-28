@@ -215,3 +215,26 @@ fprintf_LE(IN const uint64_t *in, IN const uint32_t bits_num)
   fclose(fp);
   // printf("\n");
 }
+
+void
+fprintf_LE_test(IN const uint64_t *in, IN const uint32_t bits_num)
+{
+  const uint32_t qw_num = bits_num / BITS_IN_QW;
+
+  FILE *fp;
+  fp = fopen("iter_data_all.txt", "a");
+
+  // Print the MSB QW
+  uint32_t qw_pos =
+      print_last_block((const uint8_t *)&in[qw_num], bits_num, 1, fp);
+
+  // Print each 8 bytes separated by space (if required)
+  for(int i = ((int)qw_num) - 1; i >= 0; i--, qw_pos++)
+  {
+    print_uint64(in[i], fp);
+    // print_newline(qw_pos);
+  }
+  // fprintf(fp," ");
+  fclose(fp);
+  // printf("\n");
+}

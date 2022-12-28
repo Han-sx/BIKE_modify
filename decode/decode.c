@@ -87,6 +87,52 @@
 
 // 用于计算出upc切片的值并保存在文件中
 _INLINE_ void
+compute_upc_and_save_test(IN upc_t upc)
+{
+  // ---- test ---- 将 upc 切片的值计算出来并保存
+  uint64_t mask_1 = 1;
+  // 处理前 R_QW - 1 位
+  // 将每层累计得到的 upc_i 写入文件
+  FILE *fp_2;
+  fp_2 = fopen("iter_data_all.txt", "a");
+  for(uint16_t i_upc = 0; i_upc < R_QW - 1; i_upc++)
+  {
+    for(uint64_t location = 1; location != 0; location <<= 1)
+    {
+      // 用于保存每个upc[i]的值
+      uint16_t upc_i = 0;
+      for(uint8_t location_s = 1, i_upc_s = 0; i_upc_s < SLICES - 1;
+          i_upc_s++, location_s <<= 1)
+      {
+        if((upc.slice[i_upc_s].u.qw[i_upc] & location) != 0)
+        {
+          upc_i += location_s;
+        }
+      }
+      fprintf(fp_2, "%u ", upc_i);
+    }
+  }
+  // 处理最后 R_BITS - (R_QW - 1) * 64 位
+  for(uint64_t location = 1; location < (mask_1 << (R_BITS - (R_QW - 1) * 64));
+      location <<= 1)
+  {
+    // 用于保存每个upc[i]的值
+    uint16_t upc_i = 0;
+    for(uint8_t location_s = 1, i_upc_s = 0; i_upc_s < SLICES - 1;
+        i_upc_s++, location_s <<= 1)
+    {
+      if((upc.slice[i_upc_s].u.qw[R_QW - 1] & location) != 0)
+      {
+        upc_i += location_s;
+      }
+    }
+    fprintf(fp_2, "%u ", upc_i);
+  }
+  fclose(fp_2);
+}
+
+// 用于计算出upc切片的值并保存在文件中
+_INLINE_ void
 compute_upc_and_save(IN upc_t upc)
 {
   // ---- test ---- 将 upc 切片的值计算出来并保存
@@ -341,15 +387,15 @@ solving_equations(OUT uint16_t     *b,
       {
         equations[i][X] = 0;
         continue;
-      } //过滤全0
+      } // 过滤全0
       for(j = 0; j < X; j++)
       {
         if(equations[i][j] != 0)
         {
           if(b[equations[i][j] - 1] != 0)
           {
-            equations[i][X] =
-                (equations[i][X] + b[equations[i][j] - 1]) % 2; //直接减去索引的值
+            equations[i][X] = (equations[i][X] + b[equations[i][j] - 1]) %
+                              2; // 直接减去索引的值
             equations[i][j] = 0;
           }
         }
@@ -692,7 +738,8 @@ bit_slice_full_subtract(OUT upc_t *upc, IN uint8_t val)
 // 此外，用相关值更新黑色和灰色误差向量。 此部分对应 procedure BitFlipIter(s, e,
 // th, H)
 _INLINE_ void
-find_err1(OUT split_e_t                  *e,
+find_err1(OUT upc_all_t                  *upc_out,
+          OUT split_e_t                  *e,
           OUT split_e_t                  *black_e,
           OUT split_e_t                  *gray_e,
           IN const syndrome_t            *syndrome,
@@ -724,8 +771,14 @@ find_err1(OUT split_e_t                  *e,
       bit_sliced_adder(&upc, &rotated_syndrome, LOG2_MSB(j + 1));
     }
 
-    // ---- test ---- 将 upc 切片的值计算出来并保存
-    compute_upc_and_save(upc);
+    // // ---- test ---- 将 upc 切片的值计算出来并保存
+    // compute_upc_and_save(upc);
+
+    // 保存 upc 到 upc_out
+    for(uint8_t slice_i = 0; slice_i < SLICES; slice_i++)
+    {
+      upc_out->val[i].slice[slice_i] = upc.slice[slice_i];
+    }
 
     // 2) Subtract the threshold from the UPC counters
     // 从 UPC 计数器中减去阈值
@@ -778,7 +831,8 @@ find_err1(OUT split_e_t                  *e,
 // and to the black/gray vectors.
 // 重新计算 UPC 并根据它和黑色/灰色向量组更新错误向量 (e)。
 _INLINE_ void
-find_err2(OUT split_e_t                  *e,
+find_err2(OUT upc_all_t                  *upc_out,
+          OUT split_e_t                  *e,
           IN split_e_t                   *pos_e,
           IN const syndrome_t            *syndrome,
           IN const compressed_idx_dv_ar_t wlist,
@@ -802,8 +856,14 @@ find_err2(OUT split_e_t                  *e,
       bit_sliced_adder(&upc, &rotated_syndrome, LOG2_MSB(j + 1));
     }
 
-    // 保存 upc
-    compute_upc_and_save(upc);
+    // // 保存 upc
+    // compute_upc_and_save(upc);
+
+    // 保存 upc 到 upc_out
+    for(uint8_t slice_i = 0; slice_i < SLICES; slice_i++)
+    {
+      upc_out->val[i].slice[slice_i] = upc.slice[slice_i];
+    }
 
     // 2) Subtract the threshold from the UPC counters
     // 从 UPC 计数器中减去阈值
@@ -841,34 +901,34 @@ decode(OUT split_e_t       *e,
   // 初始化黑灰数组
   split_e_t  black_e = {0};
   split_e_t  gray_e  = {0};
-  split_e_t  fixed_e = {0};
+  // split_e_t  fixed_e = {0};
   syndrome_t s;
 
-  // 构建出循环矩阵的索引 h_matrix 方便后面使用
-  uint16_t sk_wlist_all_0[R_BITS][DV] = {0};
-  uint16_t sk_wlist_all_1[R_BITS][DV] = {0};
+  // // 构建出循环矩阵的索引 h_matrix 方便后面使用
+  // uint16_t sk_wlist_all_0[R_BITS][DV] = {0};
+  // uint16_t sk_wlist_all_1[R_BITS][DV] = {0};
 
-  // 填充对应的索引值
-  // 填充第一行
-  for(uint16_t i_DV = 0; i_DV < DV; i_DV++)
-  {
-    sk_wlist_all_0[0][i_DV] = sk->wlist[0].val[i_DV];
-    sk_wlist_all_1[0][i_DV] = sk->wlist[1].val[i_DV];
-  }
+  // // 填充对应的索引值
+  // // 填充第一行
+  // for(uint16_t i_DV = 0; i_DV < DV; i_DV++)
+  // {
+  //   sk_wlist_all_0[0][i_DV] = sk->wlist[0].val[i_DV];
+  //   sk_wlist_all_1[0][i_DV] = sk->wlist[1].val[i_DV];
+  // }
 
-  // 填充后 2 - 11779 行
-  for(uint16_t i_r = 1; i_r < R_BITS; i_r++)
-  {
-    for(uint16_t i_DV = 0; i_DV < DV; i_DV++)
-    {
-      sk_wlist_all_0[i_r][i_DV] = (sk_wlist_all_0[i_r - 1][i_DV] + 1) % R_BITS;
-      sk_wlist_all_1[i_r][i_DV] = (sk_wlist_all_1[i_r - 1][i_DV] + 1) % R_BITS;
-    }
-  }
+  // // 填充后 2 - 11779 行
+  // for(uint16_t i_r = 1; i_r < R_BITS; i_r++)
+  // {
+  //   for(uint16_t i_DV = 0; i_DV < DV; i_DV++)
+  //   {
+  //     sk_wlist_all_0[i_r][i_DV] = (sk_wlist_all_0[i_r - 1][i_DV] + 1) % R_BITS;
+  //     sk_wlist_all_1[i_r][i_DV] = (sk_wlist_all_1[i_r - 1][i_DV] + 1) % R_BITS;
+  //   }
+  // }
 
-  // 初始化 fixed_e 为 R_e
-  fixed_e.val[0] = R_e->val[0];
-  fixed_e.val[1] = R_e->val[1];
+  // // 初始化 fixed_e 为 R_e
+  // fixed_e.val[0] = R_e->val[0];
+  // fixed_e.val[1] = R_e->val[1];
 
   // Reset (init) the error because it is xored in the find_err funcitons.
   // 初始化 e
@@ -886,29 +946,44 @@ decode(OUT split_e_t       *e,
   //   printf("第 %u 个 syndrome->qw 的值为: %lu\n", i_test_s, s.qw[i_test_s]);
   // }
 
-  // // 用于保存 th
-  // double_t th_array[MAX_IT] = {0};
-  // uint16_t s_array[MAX_IT]  = {0};
+  // 记录顺序 R_e0 R_e1 断行
 
-  // 记录R_e0
-  fprintf_LE((const uint64_t *)R_e->val[0].raw, R_BITS);
-  // 记录R_e1
-  fprintf_LE((const uint64_t *)R_e->val[1].raw, R_BITS);
+  // 用于保存 s 的重量
+  uint32_t s_array[MAX_IT + 2] = {0};
+  // 用于保存 th
+  uint32_t th_array[MAX_IT + 2] = {0};
+  // 用于保存 upc 的值
+  upc_all_t upc_array[MAX_IT + 2] = {0};
+  // 记录 e
+  split_e_t e_array[MAX_IT + 2] = {0};
+  // 记录 black_e
+  split_e_t black_e_array[MAX_IT + 2] = {0};
+  // 记录 gray_e
+  split_e_t gray_e_array[MAX_IT + 2] = {0};
 
-  // 断行
-  FILE *fp_2;
-  fp_2 = fopen("iter_data.txt", "a");
-  fprintf(fp_2, "\n");
-  fclose(fp_2);
+  // 将 p_p x 加入文件尾部, 并断行
+  double_t p_p_array[MAX_IT + 2] = {0};
+  double_t x_array[MAX_IT + 2]   = {0};
+
+  // // 记录R_e0
+  // fprintf_LE((const uint64_t *)R_e->val[0].raw, R_BITS);
+  // // 记录R_e1
+  // fprintf_LE((const uint64_t *)R_e->val[1].raw, R_BITS);
+
+  // // 断行
+  // FILE *fp_2;
+  // fp_2 = fopen("iter_data.txt", "a");
+  // fprintf(fp_2, "\n");
+  // fclose(fp_2);
 
   // 进入大迭代过程(for itr in 1...XBG do:)
   for(uint32_t iter = 0; iter < MAX_IT; iter++)
   {
-    // 将 fixed_e 和 求出来的 e 异或
-    GUARD(gf2x_add((uint8_t *)&fixed_e.val[0].raw, R_e->val[0].raw, e->val[0].raw,
-                   R_SIZE));
-    GUARD(gf2x_add((uint8_t *)&fixed_e.val[1].raw, R_e->val[1].raw, e->val[1].raw,
-                   R_SIZE));
+    // // 将 fixed_e 和 求出来的 e 异或
+    // GUARD(gf2x_add((uint8_t *)&fixed_e.val[0].raw, R_e->val[0].raw, e->val[0].raw,
+    //                R_SIZE));
+    // GUARD(gf2x_add((uint8_t *)&fixed_e.val[1].raw, R_e->val[1].raw, e->val[1].raw,
+    //                R_SIZE));
 
     // 解码器使用阈值(th)来决定某个位是否为错误位
     // 该位确是错误位的概率随着间隙(upc[i] - th)的增加而增加
@@ -917,37 +992,63 @@ decode(OUT split_e_t       *e,
     // 参: Bit Flipping Key Encapsulation(v2.1) 17页，Threshold Selection Rule
     // printf("\n---->当前迭代阶段: %d<----\n", iter);
 
-    // 获取当前 fixed_e 的重量
-    uint16_t fixed_e_weight = r_bits_vector_weight(&fixed_e.val[0]) +
-                              r_bits_vector_weight(&fixed_e.val[1]);
+    // // 获取当前 fixed_e 的重量
+    // uint16_t fixed_e_weight = r_bits_vector_weight(&fixed_e.val[0]) +
+    //                           r_bits_vector_weight(&fixed_e.val[1]);
 
-    // ---- test ---- 使用论文方法计算的 th, 同时获取一个概率验证 p_p 和 x
+    // // ---- test ---- 使用论文方法计算的 th, 同时获取一个概率验证 p_p 和 x
     double_t       p_p         = 0;
     double_t       x           = 0;
-    const double_t threshold_2 = compute_th_R(
-        &x, &p_p, sk_wlist_all_0, sk_wlist_all_1, fixed_e_weight, &fixed_e, &s);
+    // const double_t threshold_2 = compute_th_R(
+    //     &x, &p_p, sk_wlist_all_0, sk_wlist_all_1, fixed_e_weight, &fixed_e, &s);
 
     // 获取当前 s 的重量
     uint16_t s_weight = r_bits_vector_weight((const r_t *)s.qw);
+    if(iter == 0)
+    {
+      s_array[iter] = s_weight;
+    }
+    else
+    {
+      s_array[iter + 2] = s_weight;
+    }
 
     // 判断使用哪种方式计算 th
     uint8_t threshold = 0;
-    FILE   *fp_1;
-    fp_1 = fopen("iter_data.txt", "a");
-    fprintf(fp_1, "%u ", s_weight);
+    // FILE   *fp_1;
+    // fp_1 = fopen("iter_data.txt", "a");
+    // fprintf(fp_1, "%u ", s_weight);
     if(TH_SELECT == 0)
     {
       // 原线性拟合方法计算 th
       threshold = get_threshold(&s);
-      fprintf(fp_1, "%u ", threshold);
+      // fprintf(fp_1, "%u ", threshold);
+
+      if(iter == 0)
+      {
+        th_array[iter] = threshold;
+      }
+      else
+      {
+        th_array[iter + 2] = threshold;
+      }
     }
     else
     {
       // 论文方法计算 th, 把 th 向上取整
-      threshold = (uint8_t)threshold_2 + 1;
-      fprintf(fp_1, "%f ", threshold_2);
+      // threshold = (uint8_t)threshold_2 + 1;
+      // fprintf(fp_1, "%f ", threshold_2);
+
+      if(iter == 0)
+      {
+        th_array[iter] = threshold;
+      }
+      else
+      {
+        th_array[iter + 2] = threshold;
+      }
     }
-    fclose(fp_1);
+    // fclose(fp_1);
 
     DMSG("    Iteration: %d\n", iter);
     DMSG("    Weight of e: %lu\n",
@@ -957,27 +1058,60 @@ decode(OUT split_e_t       *e,
     // 23:  (s, e, black, gray) = BitFlipIter(s, e, th, H) . Step I
     // H -- sk->wlist
     // 进入 procedure BitFlipIter(s, e, th, H)
-    find_err1(e, &black_e, &gray_e, &s, sk->wlist, threshold, delat);
+    if(iter == 0)
+    {
+      find_err1(&upc_array[iter], e, &black_e, &gray_e, &s, sk->wlist, threshold,
+                delat);
+    }
+    else
+    {
+      find_err1(&upc_array[iter + 2], e, &black_e, &gray_e, &s, sk->wlist,
+                threshold, delat);
+    }
 
-    // 记录当前的 e0
-    fprintf_LE((uint64_t *)e->val[0].raw, R_BITS);
-    // 记录当前的 e1
-    fprintf_LE((uint64_t *)e->val[1].raw, R_BITS);
-    // 记录当前的 black_e0
-    fprintf_LE((uint64_t *)black_e.val[0].raw, R_BITS);
-    // 记录当前的 black_e1
-    fprintf_LE((uint64_t *)black_e.val[1].raw, R_BITS);
-    // 记录当前的 gray_e0
-    fprintf_LE((uint64_t *)gray_e.val[0].raw, R_BITS);
-    // 记录当前的 gray_e1
-    fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
+    // 记录 e black_e gray_e
+    if(iter == 0)
+    {
+      e_array[iter].val[0]       = e->val[0];
+      e_array[iter].val[1]       = e->val[1];
+      black_e_array[iter].val[0] = black_e.val[0];
+      black_e_array[iter].val[1] = black_e.val[1];
+      gray_e_array[iter].val[0]  = gray_e.val[0];
+      gray_e_array[iter].val[1]  = gray_e.val[1];
+      p_p_array[iter]            = p_p;
+      x_array[iter]              = x;
+    }
+    else
+    {
+      e_array[iter + 2].val[0]       = e->val[0];
+      e_array[iter + 2].val[1]       = e->val[1];
+      black_e_array[iter + 2].val[0] = black_e.val[0];
+      black_e_array[iter + 2].val[1] = black_e.val[1];
+      gray_e_array[iter + 2].val[0]  = gray_e.val[0];
+      gray_e_array[iter + 2].val[1]  = gray_e.val[1];
+      p_p_array[iter + 2]            = p_p;
+      x_array[iter + 2]              = x;
+    }
 
-    // 将 p_p 加入文件尾部, 并断行
-    FILE *fp_3;
-    fp_3 = fopen("iter_data.txt", "a");
-    fprintf(fp_3, "%f %f", p_p, x);
-    fprintf(fp_3, "\n");
-    fclose(fp_3);
+    // // 记录当前的 e0
+    // fprintf_LE((uint64_t *)e->val[0].raw, R_BITS);
+    // // 记录当前的 e1
+    // fprintf_LE((uint64_t *)e->val[1].raw, R_BITS);
+    // // 记录当前的 black_e0
+    // fprintf_LE((uint64_t *)black_e.val[0].raw, R_BITS);
+    // // 记录当前的 black_e1
+    // fprintf_LE((uint64_t *)black_e.val[1].raw, R_BITS);
+    // // 记录当前的 gray_e0
+    // fprintf_LE((uint64_t *)gray_e.val[0].raw, R_BITS);
+    // // 记录当前的 gray_e1
+    // fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
+
+    // // 将 p_p x 加入文件尾部, 并断行
+    // FILE *fp_3;
+    // fp_3 = fopen("iter_data.txt", "a");
+    // fprintf(fp_3, "%f %f", p_p, x);
+    // fprintf(fp_3, "\n");
+    // fclose(fp_3);
 
     // 10:  s = H(cT + eT ) . 更新校验子 syndrome
     GUARD(recompute_syndrome(&s, ct, sk, e));
@@ -997,306 +1131,102 @@ decode(OUT split_e_t       *e,
     // 记录 s 和 th
     // 获取当前 s 的重量
     uint16_t s_weight_2 = r_bits_vector_weight((const r_t *)s.qw);
-    FILE    *fp_4;
-    fp_4 = fopen("iter_data.txt", "a");
-    fprintf(fp_4, "%u ", s_weight_2);
-    fprintf(fp_4, "%u ", ((DV + 1) / 2) + 1);
-    fclose(fp_4);
+    // FILE    *fp_4;
+    // fp_4 = fopen("iter_data.txt", "a");
+    // fprintf(fp_4, "%u ", s_weight_2);
+    // fprintf(fp_4, "%u ", ((DV + 1) / 2) + 1);
+    // fclose(fp_4);
 
     // 24:  (s, e) = BitFlipMaskedIter(s, e, black, ((d + 1)/2), H) . Step II
     // procedure BitFlipMaskedIter(s, e, mask, th, H)
-    find_err2(e, &black_e, &s, sk->wlist, ((DV + 1) / 2) + 1);
+    find_err2(&upc_array[1], e, &black_e, &s, sk->wlist, ((DV + 1) / 2) + 1);
     GUARD(recompute_syndrome(&s, ct, sk, e));
 
     DMSG("    Weight of e: %lu\n",
          r_bits_vector_weight(&e->val[0]) + r_bits_vector_weight(&e->val[1]));
     DMSG("    Weight of syndrome: %lu\n", r_bits_vector_weight((r_t *)s.qw));
 
-    // 记录当前的 e0
-    fprintf_LE((uint64_t *)e->val[0].raw, R_BITS);
-    // 记录当前的 e1
-    fprintf_LE((uint64_t *)e->val[1].raw, R_BITS);
-    // 记录当前的 black_e0
-    fprintf_LE((uint64_t *)black_e.val[0].raw, R_BITS);
-    // 记录当前的 black_e1
-    fprintf_LE((uint64_t *)black_e.val[1].raw, R_BITS);
-    // 记录当前的 gray_e0
-    fprintf_LE((uint64_t *)gray_e.val[0].raw, R_BITS);
-    // 记录当前的 gray_e1
-    fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
+    // 记录 s 和 th
+    s_array[1]  = s_weight_2;
+    th_array[1] = ((DV + 1) / 2) + 1;
+    // 记录 e black_e gray_e
+    e_array[1].val[0]       = e->val[0];
+    e_array[1].val[1]       = e->val[1];
+    black_e_array[1].val[0] = black_e.val[0];
+    black_e_array[1].val[1] = black_e.val[1];
+    gray_e_array[1].val[0]  = gray_e.val[0];
+    gray_e_array[1].val[1]  = gray_e.val[1];
+    p_p_array[1]            = p_p;
+    x_array[1]              = x;
 
-    // 将 p_p 加入尾部, 并断行
-    FILE *fp_5;
-    fp_5 = fopen("iter_data.txt", "a");
-    fprintf(fp_5, "%f %f", p_p, x);
-    fprintf(fp_5, "\n");
-    fclose(fp_5);
+    // // 记录当前的 e0
+    // fprintf_LE((uint64_t *)e->val[0].raw, R_BITS);
+    // // 记录当前的 e1
+    // fprintf_LE((uint64_t *)e->val[1].raw, R_BITS);
+    // // 记录当前的 black_e0
+    // fprintf_LE((uint64_t *)black_e.val[0].raw, R_BITS);
+    // // 记录当前的 black_e1
+    // fprintf_LE((uint64_t *)black_e.val[1].raw, R_BITS);
+    // // 记录当前的 gray_e0
+    // fprintf_LE((uint64_t *)gray_e.val[0].raw, R_BITS);
+    // // 记录当前的 gray_e1
+    // fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
+
+    // // 将 p_p 加入尾部, 并断行
+    // FILE *fp_5;
+    // fp_5 = fopen("iter_data.txt", "a");
+    // fprintf(fp_5, "%f %f", p_p, x);
+    // fprintf(fp_5, "\n");
+    // fclose(fp_5);
 
     // 记录 s 和 th
     // 获取当前 s 的重量
     uint16_t s_weight_3 = r_bits_vector_weight((const r_t *)s.qw);
-    FILE    *fp_6;
-    fp_6 = fopen("iter_data.txt", "a");
-    fprintf(fp_6, "%u ", s_weight_3);
-    fprintf(fp_6, "%u ", ((DV + 1) / 2) + 1);
-    fclose(fp_6);
+    // FILE    *fp_6;
+    // fp_6 = fopen("iter_data.txt", "a");
+    // fprintf(fp_6, "%u ", s_weight_3);
+    // fprintf(fp_6, "%u ", ((DV + 1) / 2) + 1);
+    // fclose(fp_6);
 
     // 25:  (s, e) = BitFlipMaskedIter(s, e, gray, ((d + 1)/2), H) . Step III
     // procedure BitFlipMaskedIter(s, e, mask, th, H)
-    find_err2(e, &gray_e, &s, sk->wlist, ((DV + 1) / 2) + 1);
+    find_err2(&upc_array[2], e, &gray_e, &s, sk->wlist, ((DV + 1) / 2) + 1);
 
-    // 记录当前的 e0
-    fprintf_LE((uint64_t *)e->val[0].raw, R_BITS);
-    // 记录当前的 e1
-    fprintf_LE((uint64_t *)e->val[1].raw, R_BITS);
-    // 记录当前的 black_e0
-    fprintf_LE((uint64_t *)black_e.val[0].raw, R_BITS);
-    // 记录当前的 black_e1
-    fprintf_LE((uint64_t *)black_e.val[1].raw, R_BITS);
-    // 记录当前的 gray_e0
-    fprintf_LE((uint64_t *)gray_e.val[0].raw, R_BITS);
-    // 记录当前的 gray_e1
-    fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
+    // 记录 s 和 th
+    s_array[2]  = s_weight_3;
+    th_array[2] = ((DV + 1) / 2) + 1;
+    // 记录 e black_e gray_e
+    e_array[2].val[0]       = e->val[0];
+    e_array[2].val[1]       = e->val[1];
+    black_e_array[2].val[0] = black_e.val[0];
+    black_e_array[2].val[1] = black_e.val[1];
+    gray_e_array[2].val[0]  = gray_e.val[0];
+    gray_e_array[2].val[1]  = gray_e.val[1];
+    p_p_array[2]            = p_p;
+    x_array[2]              = x;
 
-    // 将 p_p,x 加入尾部, 并断行
-    FILE *fp_7;
-    fp_7 = fopen("iter_data.txt", "a");
-    fprintf(fp_7, "%f %f", p_p, x);
-    fprintf(fp_7, "\n");
-    fclose(fp_7);
+    // // 记录当前的 e0
+    // fprintf_LE((uint64_t *)e->val[0].raw, R_BITS);
+    // // 记录当前的 e1
+    // fprintf_LE((uint64_t *)e->val[1].raw, R_BITS);
+    // // 记录当前的 black_e0
+    // fprintf_LE((uint64_t *)black_e.val[0].raw, R_BITS);
+    // // 记录当前的 black_e1
+    // fprintf_LE((uint64_t *)black_e.val[1].raw, R_BITS);
+    // // 记录当前的 gray_e0
+    // fprintf_LE((uint64_t *)gray_e.val[0].raw, R_BITS);
+    // // 记录当前的 gray_e1
+    // fprintf_LE((uint64_t *)gray_e.val[1].raw, R_BITS);
+
+    // // 将 p_p,x 加入尾部, 并断行
+    // FILE *fp_7;
+    // fp_7 = fopen("iter_data.txt", "a");
+    // fprintf(fp_7, "%f %f", p_p, x);
+    // fprintf(fp_7, "\n");
+    // fclose(fp_7);
 
     GUARD(recompute_syndrome(&s, ct, sk, e));
   }
-
-  // // ================> 增加方程组求解算法(当 s 不为 0) <================
-  // // =================================================================
-  // // --------------------- 1.构建方程组 ---------------------
-  // for(uint32_t i = 0; i < N0; i++)
-  // {
-  //   // // ---- test ----
-  //   // printf("\n第 %u 次数值\n", i);
-
-  //   // 获取 ct 的值
-  //   ct_pad.val[i] = ct->val[i];
-
-  //   // 构造 sk 转置 sk_transpose
-  //   // 获取 sk 转置的首行索引
-  //   // 𝜑(A)' = a0 + ar-1X + ar-2X^2 ...
-  //   for(uint8_t i_DV = 0; i_DV < DV; i_DV++)
-  //   {
-  //     if(sk->wlist[i].val[i_DV] != 0)
-  //     {
-  //       sk_transpose.wlist[i].val[i_DV] = R_BITS - sk->wlist[i].val[i_DV];
-  //     }
-  //     else
-  //     {
-  //       sk_transpose.wlist[i].val[i_DV] = sk->wlist[i].val[i_DV];
-  //     }
-  //   }
-
-  //   // Initialize to zero
-  //   memset((uint64_t *)&pad_sk_transpose[i], 0, (R_BITS + 7) >> 3);
-
-  //   // // ---- test ----
-  //   // for(uint16_t i_test = 0; i_test < R_SIZE; i_test++){
-  //   //   printf("\n%4x", pad_sk_transpose[i].val.raw[i]);
-  //   // }
-
-  //   // 利用 secure_set_bits() 函数将填充索引位置置为 1
-  //   secure_set_bits((uint64_t *)&pad_sk_transpose[i],
-  //   sk_transpose.wlist[i].val,
-  //                   sizeof(pad_sk_transpose[i]), DV);
-
-  //   sk_transpose.bin[i] = pad_sk_transpose[i].val;
-
-  //   // // ---- test ---- 输出 h 转置后的重量索引
-  //   // printf(" h 转置后的第一行重量索引: \n");
-  //   // for(uint8_t i_test = 0; i_test < DV; i_test++)
-  //   // {
-  //   //   printf("\n%u", sk_transpose.wlist[i].val[i_test]);
-  //   // }
-  //   // // ---- test ---- 输出 h 的 bin
-  //   // print("\nh_transpose: \n", (uint64_t *)&sk_transpose.bin[i], R_BITS);
-
-  //   // 从 sk_transpose 中获取 h 第一行的 bin
-  //   // 复制 1473 个字节到 qw 的后 185 个 64 位整型中
-  //   memcpy((uint8_t *)&h.val[i].qw[R_QW], sk_transpose.bin[i].raw, R_SIZE);
-
-  //   // // ---- test ----
-  //   // for(uint16_t i_test = 0; i_test < 370; i_test++){
-  //   //   printf("第 %u 个未复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
-  //   // }
-
-  //   // 对 h 复制一次
-  //   dup_two(&h.val[i]);
-
-  //   // // ---- test ----
-  //   // for(uint16_t i_test = 0; i_test < 370; i_test++){
-  //   //   printf("第 %u 个复制两次的 h: %lu\n", i_test, h.val[i].qw[i_test]);
-  //   // }
-
-  //   // 去除 c 中的未知数位，将 black_or_gray_e 取反后与 c 做与操作
-  //   GUARD(negate_and(ct_remove_BG.val[i].raw, black_or_gray_e.val[i].raw,
-  //                    ct_pad.val[i].raw, R_SIZE));
-
-  //   // ---- test ---- 打印 black_or_gray_e
-  //   print("\nblack_or_gray_e: \n", (uint64_t *)black_or_gray_e.val[i].raw,
-  //         R_BITS);
-
-  //   // 将 black_or_gray_e 传递出去比较是否包含所有错误向量
-  //   black_or_gray_e_out->val[i] = black_or_gray_e.val[i];
-
-  //   // ---- test ---- 打印 ct_remove_BG
-  //   print("\nct_remove_BG: \n", (uint64_t *)ct_remove_BG.val[i].raw, R_BITS);
-
-  //   // 对方程组未知数进行构建，两次循环的索引(从 1 开始)都存储于 equeations 中
-  //   for(uint16_t i_eq = 0; i_eq < R_BITS; i_eq++)
-  //   {
-  //     // 将当前 h 与 black_or_gray_e 与运算
-  //     // h 的有效位是 [185]-[369]
-  //     GUARD(and_index(equations[i_eq], (uint8_t *)&eq_index,
-  //                     black_or_gray_e.val[i].raw, (uint8_t
-  //                     *)&h.val[i].qw[R_QW], R_SIZE, i, i_eq));
-
-  //     // // ---- test ----
-  //     // printf("第 %d 次循环----", i_eq);
-  //     // print("\n----循环 h----:", (uint64_t *)&h.val[i].qw[R_QW], R_BITS);
-
-  //     // 对 H 进行 1 bit 循环右移位
-  //     rotate_right_one(&h.val[i], &h.val[i]);
-  //   }
-  // }
-
-  // // 将 ct_remove_BG 和 H 相乘, 使用 gf2x_mod_mul(), 得到结果 constant_term
-  // // 这里计算方式与 compute_syndrome() 计算方式一致, 可调用此函数构建
-  // GUARD(compute_syndrome(&pad_constant_term, &ct_remove_BG, sk));
-
-  // // ---- test ---- 打印 pad_constant_term 的值
-  // print("\npad_constant_term: \n", (uint64_t *)pad_constant_term.qw, R_BITS);
-
-  // // 将增广常数 pad_constant_term 赋值给 equations[i][EQ_COLUMN]
-  // term_to_equations(equations, (syndrome_t *)&pad_constant_term);
-
-  // // // -- test -- 输出 equations 的值, 并保存到 data_1.txt 中
-  // // FILE *fp;
-  // // fp = fopen("data_1.txt", "a");
-  // // for(uint16_t i = 0; i < 11779; i++)
-  // // {
-  // //   // if(equations[i][0] == 0)
-  // //   // {
-  // //   //   continue;
-  // //   // }
-  // //   for(uint8_t j = 0; j < EQ_COLUMN; j++)
-  // //   {
-  // //     if(j == (EQ_COLUMN-1))
-  // //     {
-  // //       fprintf(fp, "%u\n", equations[i][j]);
-  // //       continue;
-  // //     }
-  // //     fprintf(fp, "%u,", equations[i][j]);
-  // //     // if(equations[i][j] != 0)
-  // //     // {
-  // //     //   printf("%u  ", equations[i][j]);
-  // //     // }
-  // //   }
-  // //   // printf("\n");
-  // // }
-  // // fclose(fp);
-
-  // // 计算求解的 未知数 总个数(black_or_gray_e 的重量)
-  // uint16_t x_weight = r_bits_vector_weight((r_t *)black_or_gray_e.val[0].raw) +
-  //                     r_bits_vector_weight((r_t *)black_or_gray_e.val[1].raw);
-
-  // // // --------------------- 2.解方程函数 ---------------------
-  // // 结果被保存在 b[23558] 中, 0 被保存为 2, 1 被保存为 1
-  // uint16_t b[N] = {0};
-  // solving_equations((uint16_t *)&b, equations, x_weight);
-
-  // // 检验解方程的正确性, 将 ct 对应位置放上解方程结果 b, 还原 fm 加真实 e 和 ct
-  // // 比较
-  // ct_verify.val[0] = ct->val[0];
-  // ct_verify.val[1] = ct->val[1];
-  // solving_equations_mf((ct_t *)&ct_verify, b);
-
-  // // 将 ct_verify = mf 和真实 e 异或后再异或 ct 检查重量
-  // uint8_t verify_weight[2] = {0};
-  // for(uint8_t i = 0; i < N0; i++)
-  // {
-  //   GUARD(gf2x_add((uint8_t *)&ct_verify.val[i].raw, ct_verify.val[i].raw,
-  //                  R_e->val[i].raw, R_SIZE));
-  //   GUARD(gf2x_add((uint8_t *)&ct_verify.val[i].raw, ct_verify.val[i].raw,
-  //                  ct->val[i].raw, R_SIZE));
-  //   verify_weight[i] = r_bits_vector_weight((r_t *)ct_verify.val[i].raw);
-  // }
-  // print("ct_verify.val[0]: ", (uint64_t *)ct_verify.val[0].raw, R_BITS);
-  // print("ct_verify.val[1]: ", (uint64_t *)ct_verify.val[1].raw, R_BITS);
-
-  // if(verify_weight[0] || verify_weight[1] != 0)
-  // {
-  //   FILE *fp_2;
-  //   fp_2 = fopen("weight_bad.txt", "a");
-  //   fprintf(fp_2, "DELAT: %d 解方程失败\n", delat);
-  //   // fprintf(fp_2, "v_0 重量为: %u\n", verify_weight_0);
-  //   // fprintf(fp_2, "v_1 重量为: %u\n", verify_weight_1);
-  //   fclose(fp_2);
-  //   *flag = 1;
-  // }
-  // // else
-  // // {
-  // //   printf("---- 重量为 0, 方程组求解正确 ----\n");
-  // // }
-
-  // // =================================================================
-
-  // // // ---- test ---- 打印当前 e 查看译码结果
-  // // DMSG("\n---->当前译码获得的错误向量如下:<----\n\n")
-  // // print("\ndecode_e0: \n", (uint64_t *)e->val[0].raw, R_BITS);
-  // // print("\ndecode_e1: \n", (uint64_t *)e->val[1].raw, R_BITS);
-
-  // // // ---- test ---- 测试 (ct + e) * h = 0
-  // // dbl_pad_ct_t ct_test = {0};
-  // // dbl_pad_pk_t sk_test = {0};
-  // // ct_test[0].val       = ct->val[0];
-  // // ct_test[1].val       = ct->val[1];
-  // // sk_test[0].val       = sk->bin[0];
-  // // sk_test[1].val       = sk->bin[1];
-  // // GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, e->val[0].raw,
-  // // R_SIZE)); GUARD(gf2x_add(ct_test[1].val.raw, ct_test[1].val.raw,
-  // // e->val[1].raw, R_SIZE)); GUARD(gf2x_mod_mul((uint64_t *)&ct_test[0].val,
-  // // (uint64_t *)&ct_test[0].val,
-  // //                    (uint64_t *)&sk_test[0].val));
-  // // GUARD(gf2x_mod_mul((uint64_t *)&ct_test[1].val, (uint64_t
-  // *)&ct_test[1].val,
-  // //                    (uint64_t *)&sk_test[1].val));
-  // // GUARD(gf2x_add(ct_test[0].val.raw, ct_test[0].val.raw, ct_test[1].val.raw,
-  // //                R_SIZE));
-  // // print("测试结果：", (uint64_t *)&ct_test[0].val, R_BITS);
-
-  // printf("\n");
-
-  // FILE *fp;
-  // if(delat == 3)
-  // {
-  //   fp = fopen("DELAT_3_th_s.txt", "a");
-  //   for(uint8_t i = 0; i < MAX_IT; i++)
-  //   {
-  //     fprintf(fp, "%f ", th_array[i]);
-  //     fprintf(fp, "%d\n", s_array[i]);
-  //   }
-  //   fprintf(fp, "\n");
-  // }
-  // else
-  // {
-  //   fp = fopen("DELAT_4_th_s.txt", "a");
-  //   for(uint8_t i = 0; i < MAX_IT; i++)
-  //   {
-
-  //     fprintf(fp, "%f ", th_array[i]);
-  //     fprintf(fp, "%d\n", s_array[i]);
-  //   }
-  //   fprintf(fp, "\n");
-  // }
-  // fclose(fp);
 
   //  26: if (wt(s) != 0) then
   //  27:     return ⊥(ERROR)
@@ -1308,53 +1238,51 @@ decode(OUT split_e_t       *e,
     fclose(fp_3);
     // *flag = 1;
 
-    // 如果出错 就把错误数据写入文件
-    int   ch;
-    FILE *sfp;
-    FILE *dfp;
-    char  sname[FILENAME_MAX] = "iter_data.txt";
-    char  dname[FILENAME_MAX] = "iter_data_all.txt";
+    // ---- 将记录的数据写入文件 ----
+    // 首先写入 R_e
+    fprintf_LE_test((const uint64_t *)R_e->val[0].raw, R_BITS);
+    fprintf_LE_test((const uint64_t *)R_e->val[1].raw, R_BITS);
+    // 断行
+    FILE *fp_LE_test_1;
+    fp_LE_test_1 = fopen("iter_data_all.txt", "a");
+    fprintf(fp_LE_test_1, "\n");
+    fclose(fp_LE_test_1);
 
-    if((sfp = fopen(sname, "r")) == NULL)
+    // 写入迭代数据
+    for(uint8_t iter_i = 0; iter_i < MAX_IT + 2; iter_i++)
     {
-      printf("\aerror\n");
-    }
-    else
-    {
-      if((dfp = fopen(dname, "a")) == NULL)
-      {
-        printf("\aerror\n");
-      }
-      else
-      {
-        while((ch = fgetc(sfp)) != EOF)
-        {
-          fputc(ch, dfp);
-        }
-        fclose(dfp);
-      }
-      fclose(sfp);
-    }
-
-    // 译码失败复制后也删除文件
-    if(remove("iter_data.txt") == 0)
-    {
+      // 写入 s th
+      FILE *fp_iter;
+      fp_iter = fopen("iter_data_all.txt", "a");
+      fprintf(fp_iter, "%u %u ", s_array[iter_i], th_array[iter_i]);
+      fclose(fp_iter);
+      // 写入 upc
+      compute_upc_and_save_test(upc_array[iter_i].val[0]);
+      compute_upc_and_save_test(upc_array[iter_i].val[1]);
+      // 写入 e black_e gray_e p_p x
+      // 记录当前的 e0
+      fprintf_LE_test((uint64_t *)e_array[iter_i].val[0].raw, R_BITS);
+      // 记录当前的 e1
+      fprintf_LE_test((uint64_t *)e_array[iter_i].val[1].raw, R_BITS);
+      // 记录当前的 black_e0
+      fprintf_LE_test((uint64_t *)black_e_array[iter_i].val[0].raw, R_BITS);
+      // 记录当前的 black_e1
+      fprintf_LE_test((uint64_t *)black_e_array[iter_i].val[1].raw, R_BITS);
+      // 记录当前的 gray_e0
+      fprintf_LE_test((uint64_t *)gray_e_array[iter_i].val[0].raw, R_BITS);
+      // 记录当前的 gray_e1
+      fprintf_LE_test((uint64_t *)gray_e_array[iter_i].val[1].raw, R_BITS);
+      // 将 p_p,x 加入尾部, 并断行
+      FILE *fp_iter_2;
+      fp_iter_2 = fopen("iter_data_all.txt", "a");
+      fprintf(fp_iter_2, "%f %f", p_p_array[iter_i], x_array[iter_i]);
+      fprintf(fp_iter_2, "\n");
+      fclose(fp_iter_2);
     }
 
     DMSG("s 重量不为 0...");
     BIKE_ERROR(E_DECODING_FAILURE);
   }
-
-  // 译码成功则删除文件
-  if(remove("iter_data.txt") == 0)
-  {
-  }
-
-  // // ---- test ---- fprintf_LE 测试
-  // fprintf_LE((const uint64_t *)R_e, R_BITS);
-
-  // // 由于存在全局变量，将 eq_index 重置为 0
-  // memset(eq_index, 0, R_BITS);
 
   return SUCCESS;
 }
