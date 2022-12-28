@@ -28,14 +28,14 @@
 #define N0 2
 
 #ifndef LEVEL
-#  define LEVEL 3
+#  define LEVEL 5
 #endif
 
 #if(LEVEL == 5)
 // 128-bits of post-quantum security parameters (BIKE paper):
 #  define R_BITS 40973 // 40597
 #  define DV     137
-#  define T1     264
+#  define T1     290
 
 #  define THRESHOLD_COEFF0 17.8785 // 17.489
 #  define THRESHOLD_COEFF1 0.00402312 // 0.0043536
@@ -44,9 +44,9 @@
 // The gfm code is optimized to a block size in this case:
 #  define BLOCK_SIZE (32768 * 2)
 #elif(LEVEL == 3)
-#  define R_BITS 24659 // 24821
+#  define R_BITS 19853 // 24821
 #  define DV     103
-#  define T1     214 // 199
+#  define T1     211 // 199
 
 #  define THRESHOLD_COEFF0 15.2588 // 15.932
 #  define THRESHOLD_COEFF1 0.005265 // 0.0052936
@@ -58,7 +58,7 @@
 // 64-bits of post-quantum security parameters (BIKE paper):
 #  define R_BITS 12323
 #  define DV     71
-#  define T1     141
+#  define T1     149
 
 #  define THRESHOLD_COEFF0 13.530
 #  define THRESHOLD_COEFF1 0.0069722

@@ -54,7 +54,7 @@ main()
     //   printf("Code test: %lu\n", i);
     // }
     
-    printf("Code test: %lu\n", i);
+    // printf("Code test: %lu\n", i);
     // MSG("Code test: %ld\n\n", i);
 
     // Key generation 密钥生成

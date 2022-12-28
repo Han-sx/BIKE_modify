@@ -69,9 +69,9 @@
 #  if(LEVEL == 1)
 #    define MAX_IT 5
 #  elif(LEVEL == 3)
-#    define MAX_IT 6
+#    define MAX_IT 5
 #  elif(LEVEL == 5)
-#    define MAX_IT 7
+#    define MAX_IT 5
 #  else
 #    error "Level can only be 1/3/5"
 #  endif
