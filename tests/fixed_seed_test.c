@@ -105,8 +105,7 @@ main()
           SIZEOF_BITS(k_enc));
     print("Responder's computed key (K) of 256 bits  = ", (uint64_t *)k_dec,
           SIZEOF_BITS(k_enc));
-    printf("译码失败：%u,解方程失败：%u\n", decoder_error_count, equations_error_count);
   }
-
+  printf("译码失败：%u,解方程失败：%u\n", decoder_error_count, equations_error_count);
   return 0;
 }
