@@ -28,7 +28,7 @@
 #define N0 2
 
 #ifndef LEVEL
-#  define LEVEL 5
+#  define LEVEL 3
 #endif
 
 #if(LEVEL == 5)
@@ -44,7 +44,7 @@
 // The gfm code is optimized to a block size in this case:
 #  define BLOCK_SIZE (32768 * 2)
 #elif(LEVEL == 3)
-#  define R_BITS 19853 // 24821 24659 19853
+#  define R_BITS 19717 // 24821 24659 19853
 #  define DV     103
 #  define T1     199 // 199 210
 
@@ -56,7 +56,7 @@
 #  define BLOCK_SIZE       32768
 #elif(LEVEL == 1)
 // 64-bits of post-quantum security parameters (BIKE paper):
-#  define R_BITS 10163 // 11779 10163 12323
+#  define R_BITS 10099 // 11779 10163 12323
 #  define DV     71
 #  define T1     134
 

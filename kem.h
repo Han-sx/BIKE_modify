@@ -46,4 +46,7 @@ crypto_kem_dec(OUT unsigned char *     ss,
                IN const unsigned char *ct,
                IN const unsigned char *sk,
                IN OUT uint32_t *decoder_error_count,
-               IN OUT uint32_t *equations_error_count);
+               IN OUT uint32_t *equations_error_count,
+               IN OUT uint32_t        *x_count_min,
+               IN OUT uint32_t        *x_count_max,
+               IN OUT uint64_t        *x_count_sum);

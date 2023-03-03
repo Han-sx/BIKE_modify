@@ -35,8 +35,11 @@ decode(OUT split_e_t       *black_or_gray_e_out,
        IN const ct_t       *ct,
        IN const sk_t       *sk,
        IN const uint8_t     delat,
-       IN OUT uint32_t *decoder_error_count,
-       IN OUT uint32_t *equations_error_count);
+       IN OUT uint32_t     *decoder_error_count,
+       IN OUT uint32_t     *equations_error_count,
+       IN OUT uint32_t     *x_count_min,
+       IN OUT uint32_t     *x_count_max,
+       IN OUT uint64_t     *x_count_sum);
 
 // Rotate right the first R_BITS of a syndrome.
 // Assumption: the syndrome contains three R_BITS duplications.

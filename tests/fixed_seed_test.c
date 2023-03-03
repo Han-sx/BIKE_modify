@@ -43,16 +43,23 @@ main()
   uint8_t ct[sizeof(ct_t)]    = {0}; // ciphertext:  (c0, c1)
   uint8_t k_enc[sizeof(ss_t)] = {0}; // shared secret after encapsulate
   uint8_t k_dec[sizeof(ss_t)] = {0}; // shared secret after decapsulate
- 
+
   // 记录译码失败个数，解方程失败个数
-  uint32_t decoder_error_count = 0;
+  uint32_t decoder_error_count   = 0;
   uint32_t equations_error_count = 0;
+
+  // 记录未知数个数
+  uint32_t x_count_min           = R_BITS;
+  uint32_t x_count_max           = 0;
+  uint32_t x_count_ave           = 0;
+  uint32_t x_max_add_max_sub_min = 0;
+  uint64_t x_count_sum           = 0;
 
   for(uint32_t i = 1; i <= NUM_OF_TESTS; ++i)
   {
     int res = 0;
 
-    printf("Code test: %d\n",i);
+    printf("Code test: %d\n", i);
 
     MSG("Code test: %d\n\n", i);
 
@@ -81,7 +88,9 @@ main()
 
     // Decapsulate 解封装, IN ct and sk, OUT k_dec
     // MEASURE("  decaps", dec_rc = crypto_kem_dec(k_dec, ct, sk););
-    dec_rc = crypto_kem_dec(k_dec, ct, sk, &decoder_error_count, &equations_error_count);
+    dec_rc = crypto_kem_dec(k_dec, ct, sk, &decoder_error_count,
+                            &equations_error_count, &x_count_min, &x_count_max,
+                            &x_count_sum);
 
     if(dec_rc != 0)
     {
@@ -106,6 +115,17 @@ main()
     print("Responder's computed key (K) of 256 bits  = ", (uint64_t *)k_dec,
           SIZEOF_BITS(k_enc));
   }
-  printf("译码失败：%u,解方程失败：%u\n", decoder_error_count, equations_error_count);
+  printf("译码失败：%u,解方程失败：%u\n", decoder_error_count,
+         equations_error_count);
+
+  // 计算平均未知数个数
+  x_count_ave = x_count_sum / NUM_OF_TESTS;
+  // 计算最大值加最大值减最小值
+  x_max_add_max_sub_min = x_count_max + x_count_max - x_count_min;
+
+  printf("\n\n最大未知数个数: %u\n最小未知数个数: %u\n平均值: "
+         "%u\n最大+最大-最小: %u\n",
+         x_count_max, x_count_min, x_count_ave, x_max_add_max_sub_min);
+
   return 0;
 }

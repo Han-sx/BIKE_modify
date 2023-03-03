@@ -406,7 +406,10 @@ crypto_kem_dec(OUT unsigned char      *ss,
                IN const unsigned char *ct,
                IN const unsigned char *sk,
                IN OUT uint32_t        *decoder_error_count,
-               IN OUT uint32_t        *equations_error_count)
+               IN OUT uint32_t        *equations_error_count,
+               IN OUT uint32_t        *x_count_min,
+               IN OUT uint32_t        *x_count_max,
+               IN OUT uint64_t        *x_count_sum)
 {
   DMSG("\n  Enter crypto_kem_dec(译码开始).\n");
 
@@ -462,7 +465,8 @@ crypto_kem_dec(OUT unsigned char      *ss,
   // double start_decode = clock();
   uint32_t dec_ret = decode((split_e_t *)&black_or_gray_e_out, &e,
                             (uint8_t *)&flag, &R_e, &syndrome, l_ct, l_sk, DELTA,
-                            decoder_error_count, equations_error_count) != SUCCESS
+                            decoder_error_count, equations_error_count,
+                            x_count_min, x_count_max, x_count_sum) != SUCCESS
                          ? 0
                          : 1;
   // double end_decode = clock();
