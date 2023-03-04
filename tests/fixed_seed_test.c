@@ -55,6 +55,12 @@ main()
   uint32_t x_max_add_max_sub_min = 0;
   uint64_t x_count_sum           = 0;
 
+  FILE *fp_w_x;
+  fp_w_x = fopen("/home/hsx/BIKE/find_x_count/BIKE_modify/x_count", "a");
+  uint32_t r_bit = R_BITS;
+  fprintf(fp_w_x, "%u", r_bit);
+  fclose(fp_w_x);
+
   for(uint32_t i = 1; i <= NUM_OF_TESTS; ++i)
   {
     int res = 0;
@@ -126,6 +132,11 @@ main()
   printf("\n\n最大未知数个数: %u\n最小未知数个数: %u\n平均值: "
          "%u\n最大+最大-最小: %u\n",
          x_count_max, x_count_min, x_count_ave, x_max_add_max_sub_min);
+
+  FILE *fp_w_x_end;
+  fp_w_x_end = fopen("/home/hsx/BIKE/find_x_count/BIKE_modify/x_count", "a");
+  fprintf(fp_w_x_end, "\n");
+  fclose(fp_w_x_end);
 
   return 0;
 }

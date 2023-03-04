@@ -90,9 +90,9 @@
 // 定义是否包括 stepII 和 stepIII 的集合, 0 代表不包括, 1 代表包括
 #define STEP23_ON 1
 // 定义解方程的 delta 大小
-#define DELTA_EQ 6
+#define DELTA_EQ 9
 // 定义 stepII 和 stepIII 中取的集合 delta 大小
-#define DELTA_STEP23 5
+#define DELTA_STEP23 0
 
 // 0 使用拟合方法，1 使用论文方法
 #define TH_SELECT 0
@@ -1065,16 +1065,17 @@ decode(OUT split_e_t       *black_or_gray_e_out,
 
   // 统计未知数个数
   // 统计最小值
-  if(x_weight <= *x_count_min){
+  if(x_weight <= *x_count_min)
+  {
     *x_count_min = x_weight;
   }
   // 统计最大值
-  if(x_weight >= *x_count_max){
+  if(x_weight >= *x_count_max)
+  {
     *x_count_max = x_weight;
   }
   // 统计总和
   *x_count_sum += x_weight;
-
 
   // 将 black_or_gray_e 传递出去比较是否包含所有错误向量
   for(uint32_t i = 0; i < N0; i++)
@@ -1097,6 +1098,15 @@ decode(OUT split_e_t       *black_or_gray_e_out,
     DMSG("s 重量不为 0...");
     flag_BG = 0;
     *decoder_error_count += 1;
+  }
+
+  if(r_bits_vector_weight((r_t *)s.qw) == 0)
+  {
+    // 保存未知数个数到文件
+    FILE *fp_w_x;
+    fp_w_x = fopen("/home/hsx/BIKE/find_x_count/BIKE_modify/x_count", "a");
+    fprintf(fp_w_x, ",%u", x_weight);
+    fclose(fp_w_x);
   }
 
   if(GUSS_EQ == 1)
