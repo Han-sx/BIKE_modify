@@ -28,38 +28,41 @@
 #define N0 2
 
 #ifndef LEVEL
-#  define LEVEL 1
+#  define LEVEL 5
 #endif
 
 #if(LEVEL == 5)
 // 128-bits of post-quantum security parameters (BIKE paper):
-#  define R_BITS 40597
+#  define R_BITS 40973 // 40973 40597 32749
 #  define DV     137
-#  define T1     264
+#  define T1     264 // 290 264
 
-#  define THRESHOLD_COEFF0 17.489
-#  define THRESHOLD_COEFF1 0.0043536
+#  define THRESHOLD_COEFF0 17.8785 // 17.489
+#  define THRESHOLD_COEFF1 0.00402312 // 0.0043536
+#  define THRESHOLD_MAX    69
 
 // The gfm code is optimized to a block size in this case:
 #  define BLOCK_SIZE (32768 * 2)
 #elif(LEVEL == 3)
-#  define R_BITS 24821
+#  define R_BITS 19853 // 24821 24659 19853
 #  define DV     103
-#  define T1     199
+#  define T1     199 // 199 210
 
-#  define THRESHOLD_COEFF0 15.932
-#  define THRESHOLD_COEFF1 0.0052936
+#  define THRESHOLD_COEFF0 15.2588 // 15.932
+#  define THRESHOLD_COEFF1 0.005265 // 0.0052936
+#  define THRESHOLD_MAX    52
 
 // The gfm code is optimized to a block size in this case:
 #  define BLOCK_SIZE       32768
 #elif(LEVEL == 1)
 // 64-bits of post-quantum security parameters (BIKE paper):
-#  define R_BITS 11779
+#  define R_BITS 10163 // 11779 10163 12323
 #  define DV     71
 #  define T1     134
 
 #  define THRESHOLD_COEFF0 13.530
-#  define THRESHOLD_COEFF1 0.0069721
+#  define THRESHOLD_COEFF1 0.0069722 // 0.0069721
+#  define THRESHOLD_MAX    36
 
 // The gfm code is optimized to a block size in this case:
 #  define BLOCK_SIZE       (16384)
@@ -113,6 +116,7 @@ bike_static_assert((N_BITS % ALL_YMM_SIZE != 0), nbits_512_err);
 #define LAST_R_QW_TRAIL   (64 - LAST_R_QW_LEAD)     // LAST_R_QW_TRAIL = 61
 #define LAST_R_QW_TRAIL_2 (64 - 2 * LAST_R_QW_LEAD) // LAST_R_QW_TRAIL_2 = 58
 #define LAST_R_QW_MASK    MASK(LAST_R_QW_LEAD) // LAST_R_QW_MASK = 7 = (bin)111
+#define LAST_R_QW_TRAIL_3 (64 - 2 * LAST_R_QW_TRAIL)
 
 #define LAST_R_BYTE_LEAD  (R_BITS & MASK(3))
 #define LAST_R_BYTE_TRAIL (8 - LAST_R_BYTE_LEAD)
@@ -127,7 +131,7 @@ bike_static_assert((N_BITS % ALL_YMM_SIZE != 0), nbits_512_err);
 ////////////////////////////////
 #define BGF_DECODER
 #define DELTA  3
-#define DELTA_5 4
-#define DELTA_7 5
+#define DELTA_5 9
+#define DELTA_7 10
 #define DELTA_9 9
 #define SLICES (LOG2_MSB(DV) + 1)

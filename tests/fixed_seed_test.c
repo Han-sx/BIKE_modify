@@ -43,6 +43,10 @@ main()
   uint8_t ct[sizeof(ct_t)]    = {0}; // ciphertext:  (c0, c1)
   uint8_t k_enc[sizeof(ss_t)] = {0}; // shared secret after encapsulate
   uint8_t k_dec[sizeof(ss_t)] = {0}; // shared secret after decapsulate
+ 
+  // 记录译码失败个数，解方程失败个数
+  uint32_t decoder_error_count = 0;
+  uint32_t equations_error_count = 0;
 
   for(uint32_t i = 1; i <= NUM_OF_TESTS; ++i)
   {
@@ -77,7 +81,7 @@ main()
 
     // Decapsulate 解封装, IN ct and sk, OUT k_dec
     // MEASURE("  decaps", dec_rc = crypto_kem_dec(k_dec, ct, sk););
-    dec_rc = crypto_kem_dec(k_dec, ct, sk);
+    dec_rc = crypto_kem_dec(k_dec, ct, sk, &decoder_error_count, &equations_error_count);
 
     if(dec_rc != 0)
     {
@@ -102,6 +106,6 @@ main()
     print("Responder's computed key (K) of 256 bits  = ", (uint64_t *)k_dec,
           SIZEOF_BITS(k_enc));
   }
-
+  printf("译码失败：%u,解方程失败：%u\n", decoder_error_count, equations_error_count);
   return 0;
 }
